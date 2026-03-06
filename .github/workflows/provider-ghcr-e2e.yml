@@ -41,6 +41,9 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Package and push example provider
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ./bin/tinx release \
             --manifest testdata/echo-provider/tinx.yaml \
@@ -50,6 +53,9 @@ jobs:
             --push-ref "${{ steps.vars.outputs.ref }}"
 
       - name: Install and run from GHCR
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd testdata/echo-provider
           ../../bin/tinx --tinx-home "$RUNNER_TEMP/tinx-home" install sourceplane/echo-provider --ref "${{ steps.vars.outputs.ref }}" --alias echo
