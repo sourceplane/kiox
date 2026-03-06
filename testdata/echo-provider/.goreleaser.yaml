@@ -1,0 +1,25 @@
+project_name: echo-provider
+
+dist: dist
+
+builds:
+  - id: echo-provider
+    main: ./cmd/echo-provider
+    binary: echo-provider
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+archives:
+  - formats: [binary]
+    name_template: "{{ .Binary }}-{{ .Os }}-{{ .Arch }}"
+checksum:
+  disable: true
+release:
+  disable: true
+changelog:
+  disable: true

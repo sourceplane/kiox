@@ -1,0 +1,9 @@
+.DS_Store
+
+# Local build/test artifacts
+bin/
+.tinx-home/
+tinx
+
+# Example provider build output
+testdata/echo-provider/dist/
