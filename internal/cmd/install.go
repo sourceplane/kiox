@@ -34,7 +34,7 @@ func newInstallCommand(root *rootOptions) *cobra.Command {
 			}
 
 			if source == "" {
-				installed, err := oci.InstallRemote(cmd.Context(), home, installTarget, alias, plainHTTP)
+				installed, err := oci.InstallRemote(cmd.Context(), home, installTarget, alias, plainHTTP, cmd.ErrOrStderr())
 				if err != nil {
 					return err
 				}
@@ -62,7 +62,7 @@ func newInstallCommand(root *rootOptions) *cobra.Command {
 			if _, err := os.Stat(absSource); err != nil {
 				return fmt.Errorf("open source layout: %w", err)
 			}
-			installed, err := oci.InstallMetadata(absSource, tag, home, alias)
+			installed, err := oci.InstallMetadata(absSource, tag, home, alias, cmd.ErrOrStderr())
 			if err != nil {
 				return err
 			}

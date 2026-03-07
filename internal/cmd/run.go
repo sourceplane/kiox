@@ -30,7 +30,7 @@ func newRunCommand(root *rootOptions) *cobra.Command {
 					ref = aliased
 				}
 			}
-			providerMeta, err := resolveProviderForRun(home, ref, plainHTTP)
+			providerMeta, err := resolveProviderForRun(home, ref, plainHTTP, cmd.ErrOrStderr())
 			if err != nil {
 				return err
 			}

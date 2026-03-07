@@ -9,19 +9,19 @@ import (
 )
 
 type ProviderMetadata struct {
-	Namespace    string            `json:"namespace"`
-	Name         string            `json:"name"`
-	Version      string            `json:"version"`
-	Description  string            `json:"description,omitempty"`
-	Homepage     string            `json:"homepage,omitempty"`
-	License      string            `json:"license,omitempty"`
-	Runtime      string            `json:"runtime"`
-	Entrypoint   string            `json:"entrypoint"`
-	Capabilities []string          `json:"capabilities,omitempty"`
+	Namespace              string            `json:"namespace"`
+	Name                   string            `json:"name"`
+	Version                string            `json:"version"`
+	Description            string            `json:"description,omitempty"`
+	Homepage               string            `json:"homepage,omitempty"`
+	License                string            `json:"license,omitempty"`
+	Runtime                string            `json:"runtime"`
+	Entrypoint             string            `json:"entrypoint"`
+	Capabilities           []string          `json:"capabilities,omitempty"`
 	CapabilityDescriptions map[string]string `json:"capabilityDescriptions,omitempty"`
-	Platforms    []PlatformSummary `json:"platforms,omitempty"`
-	Source       Source            `json:"source"`
-	InstalledAt  time.Time         `json:"installedAt"`
+	Platforms              []PlatformSummary `json:"platforms,omitempty"`
+	Source                 Source            `json:"source"`
+	InstalledAt            time.Time         `json:"installedAt"`
 }
 
 type PlatformSummary struct {

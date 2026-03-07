@@ -3,8 +3,10 @@ package oci
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
+	"sync"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	oras "oras.land/oras-go/v2"
@@ -14,6 +16,7 @@ import (
 	"oras.land/oras-go/v2/registry/remote/credentials"
 
 	"github.com/sourceplane/tinx/internal/state"
+	"github.com/sourceplane/tinx/internal/ui/progress"
 )
 
 func PushLayout(ctx context.Context, layoutPath, tag, ref string, plainHTTP bool) error {
@@ -37,26 +40,35 @@ func PushLayout(ctx context.Context, layoutPath, tag, ref string, plainHTTP bool
 	return nil
 }
 
-func InstallRemote(ctx context.Context, home, ref, alias string, plainHTTP bool) (state.ProviderMetadata, error) {
+func InstallRemote(ctx context.Context, home, ref, alias string, plainHTTP bool, out io.Writer) (state.ProviderMetadata, error) {
+	tracker := progress.New(out)
+	defer tracker.Finish()
+	tracker.Step("lookup", fmt.Sprintf("checking local cache for %s", ref))
 	if cached, ok := cachedRemoteInstall(home, ref, false); ok {
+		tracker.Cached("cache", fmt.Sprintf("using cached metadata %s/%s@%s", cached.Namespace, cached.Name, cached.Version))
 		return cached, nil
 	}
-	return installRemote(ctx, home, ref, alias, plainHTTP, true)
+	return installRemote(ctx, home, ref, alias, plainHTTP, true, tracker)
 }
 
-func InstallRemoteFull(ctx context.Context, home, ref, alias string, plainHTTP bool) (state.ProviderMetadata, error) {
+func InstallRemoteFull(ctx context.Context, home, ref, alias string, plainHTTP bool, out io.Writer) (state.ProviderMetadata, error) {
+	tracker := progress.New(out)
+	defer tracker.Finish()
+	tracker.Step("lookup", fmt.Sprintf("checking local cache for %s", ref))
 	if cached, ok := cachedRemoteInstall(home, ref, true); ok {
+		tracker.Cached("cache", fmt.Sprintf("using cached runtime %s/%s@%s", cached.Namespace, cached.Name, cached.Version))
 		return cached, nil
 	}
-	return installRemote(ctx, home, ref, alias, plainHTTP, false)
+	return installRemote(ctx, home, ref, alias, plainHTTP, false, tracker)
 }
 
-func installRemote(ctx context.Context, home, ref, alias string, plainHTTP, metadataOnly bool) (state.ProviderMetadata, error) {
+func installRemote(ctx context.Context, home, ref, alias string, plainHTTP, metadataOnly bool, tracker *progress.Tracker) (state.ProviderMetadata, error) {
 	tempDir, err := os.MkdirTemp("", "tinx-oci-*")
 	if err != nil {
 		return state.ProviderMetadata{}, fmt.Errorf("create temp OCI layout: %w", err)
 	}
 	defer os.RemoveAll(tempDir)
+	tracker.Step("prepare", "created temporary OCI workspace")
 
 	store, err := ocistore.New(tempDir)
 	if err != nil {
@@ -70,25 +82,68 @@ func installRemote(ctx context.Context, home, ref, alias string, plainHTTP, meta
 	}
 	repo.PlainHTTP = plainHTTP
 	configureRepositoryAuth(repo)
+	tracker.Step("resolve", fmt.Sprintf("resolved %s:%s", repository, tag))
+	if metadataOnly {
+		tracker.Info("download", "pulling metadata layers")
+	} else {
+		tracker.Info("download", "pulling full runtime layers")
+	}
+
+	var mu sync.Mutex
+	var downloadedCount int
+	var downloadedBytes int64
 	copyOptions := oras.DefaultCopyOptions
 	if metadataOnly {
 		copyOptions.PreCopy = func(_ context.Context, descriptor ocispec.Descriptor) error {
 			switch descriptor.MediaType {
 			case ocispec.MediaTypeImageManifest, MediaTypeConfig, MediaTypeManifest, MediaTypeMetadata:
+				mu.Lock()
+				downloadedCount++
+				downloadedBytes += descriptor.Size
+				count := downloadedCount
+				bytes := downloadedBytes
+				mu.Unlock()
+				tracker.Info("download", fmt.Sprintf("%d blobs • %s", count, formatBytes(bytes)))
 				return nil
 			default:
 				return oras.SkipNode
 			}
 		}
+	} else {
+		copyOptions.PreCopy = func(_ context.Context, descriptor ocispec.Descriptor) error {
+			mu.Lock()
+			downloadedCount++
+			downloadedBytes += descriptor.Size
+			count := downloadedCount
+			bytes := downloadedBytes
+			mu.Unlock()
+			tracker.Info("download", fmt.Sprintf("%d blobs • %s", count, formatBytes(bytes)))
+			return nil
+		}
 	}
 	if _, err := oras.Copy(ctx, repo, tag, store, tag, copyOptions); err != nil {
 		return state.ProviderMetadata{}, fmt.Errorf("pull artifact: %w", err)
 	}
-	meta, err := installMetadata(tempDir, tag, home, alias, ref, plainHTTP)
+	tracker.Done("download", "artifact pull complete")
+	meta, err := installMetadata(tempDir, tag, home, alias, ref, plainHTTP, tracker)
 	if err != nil {
 		return state.ProviderMetadata{}, err
 	}
+	tracker.Done("install", fmt.Sprintf("installed %s/%s@%s", meta.Namespace, meta.Name, meta.Version))
 	return meta, nil
+}
+
+func formatBytes(size int64) string {
+	const unit = int64(1024)
+	if size < unit {
+		return fmt.Sprintf("%d B", size)
+	}
+	div, exp := unit, 0
+	for n := size / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(size)/float64(div), "KMGTPE"[exp])
 }
 
 func parseReference(ref string) (repository, tag string) {

@@ -37,8 +37,9 @@ func Execute(ctx context.Context) error {
 		fallback.SetErr(os.Stderr)
 		if aliasErr := runAlias(fallback, &rootOptions{Home: home}, args); aliasErr == nil {
 			return nil
+		} else {
+			return aliasErr
 		}
-		return err
 	}
 	return nil
 }
@@ -84,7 +85,7 @@ func runAlias(cmd *cobra.Command, opts *rootOptions, args []string) error {
 	if !ok {
 		return fmt.Errorf("unknown command or alias %q", args[0])
 	}
-	providerMeta, err := resolveProviderForRun(home, ref, false)
+	providerMeta, err := resolveProviderForRun(home, ref, false, cmd.ErrOrStderr())
 	if err != nil {
 		return err
 	}
@@ -106,7 +107,7 @@ func executeProviderCapability(cmd *cobra.Command, home, providerRef string, pro
 	if !contains(providerMeta.Capabilities, args[0]) {
 		return fmt.Errorf("provider %s does not expose capability %q", providerRef, args[0])
 	}
-	binaryPath, err := oci.MaterializeRuntime(home, providerMeta, goruntime.GOOS, goruntime.GOARCH)
+	binaryPath, err := oci.MaterializeRuntime(home, providerMeta, goruntime.GOOS, goruntime.GOARCH, cmd.ErrOrStderr())
 	if err != nil {
 		return err
 	}
@@ -123,7 +124,7 @@ func executeProviderCapability(cmd *cobra.Command, home, providerRef string, pro
 	})
 }
 
-func resolveProviderForRun(home, ref string, plainHTTP bool) (state.ProviderMetadata, error) {
+func resolveProviderForRun(home, ref string, plainHTTP bool, progressOut io.Writer) (state.ProviderMetadata, error) {
 	providerMeta, err := resolveInstalledProvider(home, ref)
 	if err == nil {
 		return providerMeta, nil
@@ -136,7 +137,7 @@ func resolveProviderForRun(home, ref string, plainHTTP bool) (state.ProviderMeta
 			return installedMeta, nil
 		}
 	}
-	installed, installErr := oci.InstallRemoteFull(context.Background(), home, ref, "", plainHTTP)
+	installed, installErr := oci.InstallRemoteFull(context.Background(), home, ref, "", plainHTTP, progressOut)
 	if installErr != nil {
 		return state.ProviderMetadata{}, err
 	}
