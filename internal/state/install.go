@@ -18,6 +18,7 @@ type ProviderMetadata struct {
 	Runtime      string            `json:"runtime"`
 	Entrypoint   string            `json:"entrypoint"`
 	Capabilities []string          `json:"capabilities,omitempty"`
+	CapabilityDescriptions map[string]string `json:"capabilityDescriptions,omitempty"`
 	Platforms    []PlatformSummary `json:"platforms,omitempty"`
 	Source       Source            `json:"source"`
 	InstalledAt  time.Time         `json:"installedAt"`
@@ -32,6 +33,7 @@ type Source struct {
 	LayoutPath string `json:"layoutPath"`
 	Tag        string `json:"tag"`
 	Ref        string `json:"ref,omitempty"`
+	PlainHTTP  bool   `json:"plainHTTP,omitempty"`
 }
 
 func ProviderRoot(home, namespace, name string) string {

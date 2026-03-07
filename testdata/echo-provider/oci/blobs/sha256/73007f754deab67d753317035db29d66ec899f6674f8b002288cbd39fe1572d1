@@ -26,7 +26,7 @@
     },
     {
       "mediaType": "application/vnd.tinx.provider.assets.v1+tar",
-      "digest": "sha256:9d601e97fb0ae718a5d4eb6e420def9ef60f5dc6052e585d79795405dd2c8440",
+      "digest": "sha256:82db5a913d99ed3dfa022bf969e2216f165ef44d68fbc7d8153062129041687b",
       "size": 2560,
       "annotations": {
         "org.opencontainers.image.title": "assets"
@@ -34,8 +34,8 @@
     },
     {
       "mediaType": "application/vnd.tinx.provider.binary.darwin.amd64.v1",
-      "digest": "sha256:181300a724e0124caeb909062a350414b7af97ecba8350a4ecb8274a87b0a325",
-      "size": 1622256,
+      "digest": "sha256:1d13882e595f723e6ed7e200613cd0fbc5e83bd7750d37f9d704f6208507c992",
+      "size": 1630448,
       "annotations": {
         "io.tinx.platform": "darwin/amd64",
         "org.opencontainers.image.title": "bin/darwin/amd64/echo-provider"
@@ -43,8 +43,8 @@
     },
     {
       "mediaType": "application/vnd.tinx.provider.binary.darwin.arm64.v1",
-      "digest": "sha256:66b48aaa5cc0e23ceb5980ec142b3546e6b4095031d7e7f79cba71075982d81a",
-      "size": 1606418,
+      "digest": "sha256:5572f3cee33c543fc0b3403a56b74e2d793130adc10a8dee577ff7d740d4095f",
+      "size": 1622930,
       "annotations": {
         "io.tinx.platform": "darwin/arm64",
         "org.opencontainers.image.title": "bin/darwin/arm64/echo-provider"
@@ -52,8 +52,8 @@
     },
     {
       "mediaType": "application/vnd.tinx.provider.binary.linux.amd64.v1",
-      "digest": "sha256:ae0a80a062c7274094f9f4c700cea1308a95f5425a596eb6fb19da1028cc6ae2",
-      "size": 1511608,
+      "digest": "sha256:eaeff22f714a2df63e19011a7446a1073f0496b3269903240de0d0865d54a061",
+      "size": 1519800,
       "annotations": {
         "io.tinx.platform": "linux/amd64",
         "org.opencontainers.image.title": "bin/linux/amd64/echo-provider"
@@ -61,7 +61,7 @@
     },
     {
       "mediaType": "application/vnd.tinx.provider.binary.linux.arm64.v1",
-      "digest": "sha256:be89994c0b5ce26972190120508b58fe2686048e0fef8ea5f985a24593c3bc3a",
+      "digest": "sha256:15c496930d19f60b5af996bed8106f364a09b4a9f927a0c9e0a90a8e0f5a53ec",
       "size": 1573048,
       "annotations": {
         "io.tinx.platform": "linux/arm64",

@@ -76,6 +76,75 @@ cp dist/bin/darwin/amd64/echo-provider dist/bin/linux/arm64/echo-provider
 	}
 }
 
+func TestReleaseDelegatesToGeneratedGoReleaserConfig(t *testing.T) {
+	workspace := t.TempDir()
+	home := filepath.Join(workspace, ".tinx-home")
+	providerDir := copyTestProvider(t, workspace)
+	if err := os.Remove(filepath.Join(providerDir, ".goreleaser.yaml")); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+
+	binDir := filepath.Join(workspace, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	logPath := filepath.Join(workspace, "goreleaser-generated.log")
+	script := fmt.Sprintf(`#!/bin/sh
+set -eu
+printf '%%s\n' "$*" > %q
+config=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--config" ]; then
+    config="$2"
+    shift 2
+    continue
+  fi
+  shift
+done
+if [ -z "$config" ]; then
+  echo "missing --config" >&2
+  exit 1
+fi
+if [ ! -f "$config" ]; then
+  echo "config file does not exist: $config" >&2
+  exit 1
+fi
+grep -q 'project_name: echo-provider' "$config"
+mkdir -p dist/bin/darwin/amd64 dist/bin/darwin/arm64 dist/bin/linux/amd64 dist/bin/linux/arm64
+go build -o dist/bin/darwin/amd64/echo-provider ./cmd/echo-provider
+cp dist/bin/darwin/amd64/echo-provider dist/bin/darwin/arm64/echo-provider
+cp dist/bin/darwin/amd64/echo-provider dist/bin/linux/amd64/echo-provider
+cp dist/bin/darwin/amd64/echo-provider dist/bin/linux/arm64/echo-provider
+`, logPath)
+	if err := os.WriteFile(filepath.Join(binDir, "goreleaser"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	originalPath := os.Getenv("PATH")
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+originalPath)
+
+	releaseBuf := runRootCommand(t, []string{
+		"--tinx-home", home,
+		"release",
+		"--manifest", filepath.Join(providerDir, "tinx.yaml"),
+		"--dist", filepath.Join(providerDir, "artifacts"),
+		"--output", filepath.Join(providerDir, "oci"),
+		"--delegate-goreleaser",
+	})
+	if !bytes.Contains(releaseBuf.Bytes(), []byte("released sourceplane/echo-provider")) {
+		t.Fatalf("unexpected release output: %s", releaseBuf.String())
+	}
+	if _, err := os.Stat(filepath.Join(providerDir, ".goreleaser.tinx.generated.yaml")); err != nil {
+		t.Fatalf("expected generated goreleaser config: %v", err)
+	}
+	logged, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(logged), "--config") {
+		t.Fatalf("expected goreleaser invocation to include --config, got %q", string(logged))
+	}
+}
+
 func TestReleasePushAndInstallFromRegistry(t *testing.T) {
 	workspace := t.TempDir()
 	home := filepath.Join(workspace, ".tinx-home")
@@ -91,7 +160,7 @@ func TestReleasePushAndInstallFromRegistry(t *testing.T) {
 		"--manifest", filepath.Join(providerDir, "tinx.yaml"),
 		"--dist", filepath.Join(providerDir, "dist"),
 		"--output", filepath.Join(providerDir, "oci"),
-		"--push-ref", ref,
+		"--push", ref,
 		"--plain-http",
 	})
 	if !bytes.Contains(releaseBuf.Bytes(), []byte("pushed "+ref)) {
@@ -100,9 +169,7 @@ func TestReleasePushAndInstallFromRegistry(t *testing.T) {
 
 	installBuf := runRootCommand(t, []string{
 		"--tinx-home", home,
-		"install", "sourceplane/echo-provider",
-		"--ref", ref,
-		"--alias", "echo",
+		"install", "echo", ref,
 		"--plain-http",
 	})
 	if !bytes.Contains(installBuf.Bytes(), []byte("installed sourceplane/echo-provider@v0.1.0")) {
@@ -118,13 +185,143 @@ func TestReleasePushAndInstallFromRegistry(t *testing.T) {
 	}
 }
 
+func TestRunDirectFromRegistryWithoutInstall(t *testing.T) {
+	workspace := t.TempDir()
+	home := filepath.Join(workspace, ".tinx-home")
+	providerDir := copyTestProvider(t, workspace)
+	server := httptest.NewServer(gcrregistry.New())
+	defer server.Close()
+	registryHost := strings.TrimPrefix(server.URL, "http://")
+	ref := registryHost + "/sourceplane/echo-provider:v0.1.0"
+
+	releaseBuf := runRootCommand(t, []string{
+		"--tinx-home", home,
+		"release",
+		"--manifest", filepath.Join(providerDir, "tinx.yaml"),
+		"--dist", filepath.Join(providerDir, "dist"),
+		"--output", filepath.Join(providerDir, "oci"),
+		"--push", ref,
+		"--plain-http",
+	})
+	if !bytes.Contains(releaseBuf.Bytes(), []byte("pushed "+ref)) {
+		t.Fatalf("unexpected push output: %s", releaseBuf.String())
+	}
+
+	runBuf := runRootCommand(t, []string{
+		"--tinx-home", home,
+		"run", ref, "plan",
+		"--plain-http",
+		"--intent", "intent.yaml",
+	})
+	if !bytes.Contains(runBuf.Bytes(), []byte("capability=plan")) {
+		t.Fatalf("unexpected direct run output: %s", runBuf.String())
+	}
+}
+
+func TestRunThenInstallUsesCachedRemoteProvider(t *testing.T) {
+	workspace := t.TempDir()
+	home := filepath.Join(workspace, ".tinx-home")
+	providerDir := copyTestProvider(t, workspace)
+	server := httptest.NewServer(gcrregistry.New())
+	registryHost := strings.TrimPrefix(server.URL, "http://")
+	ref := registryHost + "/sourceplane/echo-provider:v0.1.0"
+
+	releaseBuf := runRootCommand(t, []string{
+		"--tinx-home", home,
+		"release",
+		"--manifest", filepath.Join(providerDir, "tinx.yaml"),
+		"--dist", filepath.Join(providerDir, "dist"),
+		"--output", filepath.Join(providerDir, "oci"),
+		"--push", ref,
+		"--plain-http",
+	})
+	if !bytes.Contains(releaseBuf.Bytes(), []byte("pushed "+ref)) {
+		t.Fatalf("unexpected push output: %s", releaseBuf.String())
+	}
+
+	firstRunBuf := runRootCommand(t, []string{
+		"--tinx-home", home,
+		"run", ref, "plan",
+		"--plain-http",
+		"--intent", "intent.yaml",
+	})
+	if !bytes.Contains(firstRunBuf.Bytes(), []byte("capability=plan")) {
+		t.Fatalf("unexpected first direct run output: %s", firstRunBuf.String())
+	}
+
+	server.Close()
+
+	secondRunBuf := runRootCommand(t, []string{
+		"--tinx-home", home,
+		"run", ref, "plan",
+		"--plain-http",
+		"--intent", "intent.yaml",
+	})
+	if !bytes.Contains(secondRunBuf.Bytes(), []byte("capability=plan")) {
+		t.Fatalf("unexpected second direct run output: %s", secondRunBuf.String())
+	}
+
+	installBuf := runRootCommand(t, []string{
+		"--tinx-home", home,
+		"install", "ci", ref,
+		"--plain-http",
+	})
+	if !bytes.Contains(installBuf.Bytes(), []byte("installed sourceplane/echo-provider@v0.1.0")) {
+		t.Fatalf("unexpected install output after cache: %s", installBuf.String())
+	}
+
+	runAliasBuf := runRootCommand(t, []string{
+		"--tinx-home", home,
+		"run", "ci", "plan",
+		"--intent", "intent.yaml",
+	})
+	if !bytes.Contains(runAliasBuf.Bytes(), []byte("capability=plan")) {
+		t.Fatalf("unexpected alias run output after cache: %s", runAliasBuf.String())
+	}
+}
+
+func TestRunProviderHelpFromAlias(t *testing.T) {
+	workspace := t.TempDir()
+	home := filepath.Join(workspace, ".tinx-home")
+	providerDir := copyTestProvider(t, workspace)
+
+	releaseBuf := runRootCommand(t, []string{
+		"--tinx-home", home,
+		"release",
+		"--manifest", filepath.Join(providerDir, "tinx.yaml"),
+		"--dist", filepath.Join(providerDir, "dist"),
+		"--output", filepath.Join(providerDir, "oci"),
+	})
+	if !bytes.Contains(releaseBuf.Bytes(), []byte("released sourceplane/echo-provider")) {
+		t.Fatalf("unexpected release output: %s", releaseBuf.String())
+	}
+
+	installBuf := runRootCommand(t, []string{
+		"--tinx-home", home,
+		"install", "echo", "sourceplane/echo-provider",
+		"--source", filepath.Join(providerDir, "oci"),
+	})
+	if !bytes.Contains(installBuf.Bytes(), []byte("installed sourceplane/echo-provider@v0.1.0")) {
+		t.Fatalf("unexpected install output: %s", installBuf.String())
+	}
+
+	helpBuf := runRootCommand(t, []string{
+		"--tinx-home", home,
+		"run", "echo", "help",
+	})
+	if !bytes.Contains(helpBuf.Bytes(), []byte("Capabilities:")) {
+		t.Fatalf("missing capabilities section in help output: %s", helpBuf.String())
+	}
+	if !bytes.Contains(helpBuf.Bytes(), []byte("plan")) {
+		t.Fatalf("missing capability in help output: %s", helpBuf.String())
+	}
+}
+
 func runInstallAndRunAssertions(t *testing.T, home, providerDir, layoutPath, ref string) {
 	t.Helper()
-	installArgs := []string{"--tinx-home", home, "install", "sourceplane/echo-provider", "--alias", "echo"}
+	installArgs := []string{"--tinx-home", home, "install", "echo", "sourceplane/echo-provider", "--source", layoutPath}
 	if ref != "" {
-		installArgs = append(installArgs, "--ref", ref, "--plain-http")
-	} else {
-		installArgs = append(installArgs, "--source", layoutPath)
+		installArgs = []string{"--tinx-home", home, "install", "echo", ref, "--plain-http"}
 	}
 	installBuf := runRootCommand(t, installArgs)
 	if !bytes.Contains(installBuf.Bytes(), []byte("installed sourceplane/echo-provider@v0.1.0")) {

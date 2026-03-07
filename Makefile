@@ -52,7 +52,7 @@ release-example: build
 		--output $(ECHO_PROVIDER_OCI)
 
 install-example: release-example
-	./$(TINX_BIN) --tinx-home $(TINX_HOME) install $(ECHO_PROVIDER_REF) --source $(ECHO_PROVIDER_OCI) --alias $(ECHO_PROVIDER_ALIAS)
+	./$(TINX_BIN) --tinx-home $(TINX_HOME) install $(ECHO_PROVIDER_ALIAS) $(ECHO_PROVIDER_REF) --source $(ECHO_PROVIDER_OCI)
 
 run-example: install-example
 	cd $(ECHO_PROVIDER_DIR) && ../../$(TINX_BIN) --tinx-home $(TINX_HOME) run $(ECHO_PROVIDER_ALIAS) plan --intent intent.yaml
@@ -65,10 +65,10 @@ ghcr-push: build
 		--main ./cmd/echo-provider \
 		--dist $(ECHO_PROVIDER_DIST) \
 		--output $(ECHO_PROVIDER_OCI) \
-		--push-ref $(GHCR_REF)
+		--push $(GHCR_REF)
 
 ghcr-install-run: build
-	./$(TINX_BIN) --tinx-home $(TINX_HOME) install $(ECHO_PROVIDER_REF) --ref $(GHCR_REF) --alias $(ECHO_PROVIDER_ALIAS)
+	./$(TINX_BIN) --tinx-home $(TINX_HOME) install $(ECHO_PROVIDER_ALIAS) $(GHCR_REF)
 	cd $(ECHO_PROVIDER_DIR) && ../../$(TINX_BIN) --tinx-home $(TINX_HOME) run $(ECHO_PROVIDER_ALIAS) plan --intent intent.yaml
 
 clean:

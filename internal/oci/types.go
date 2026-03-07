@@ -33,6 +33,7 @@ type ProviderMetadata struct {
 	Entrypoint   string             `json:"entrypoint"`
 	Runtime      string             `json:"runtime"`
 	Capabilities []string           `json:"capabilities,omitempty"`
+	CapabilityDescriptions map[string]string `json:"capabilityDescriptions,omitempty"`
 	Platforms    []ProviderPlatform `json:"platforms,omitempty"`
 }
 

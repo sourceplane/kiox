@@ -20,7 +20,7 @@ func newReleaseCommand() *cobra.Command {
 	var mainPkg string
 	var skipBuild bool
 	var tag string
-	var pushRef string
+	var push string
 	var plainHTTP bool
 	var delegateGoReleaser bool
 	var goreleaserConfig string
@@ -53,9 +53,10 @@ func newReleaseCommand() *cobra.Command {
 				}
 				if delegateGoReleaser {
 					if err := build.BuildWithGoReleaser(context.Background(), build.GoReleaserOptions{
-						ModuleRoot: moduleRoot,
-						ConfigPath: goreleaserConfig,
-						DistDir:    absDist,
+						ModuleRoot:   moduleRoot,
+						ConfigPath:   goreleaserConfig,
+						ManifestPath: absManifest,
+						DistDir:      absDist,
 					}); err != nil {
 						return err
 					}
@@ -78,11 +79,11 @@ func newReleaseCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if pushRef != "" {
-				if err := oci.PushLayout(cmd.Context(), result.LayoutDir, result.Tag, pushRef, plainHTTP); err != nil {
+			if push != "" {
+				if err := oci.PushLayout(cmd.Context(), result.LayoutDir, result.Tag, push, plainHTTP); err != nil {
 					return err
 				}
-				writeLine(cmd.OutOrStdout(), "pushed %s", pushRef)
+				writeLine(cmd.OutOrStdout(), "pushed %s", push)
 			}
 			writeLine(cmd.OutOrStdout(), "released %s@%s -> %s", result.ProviderRef, result.Tag, result.LayoutDir)
 			return nil
@@ -94,7 +95,7 @@ func newReleaseCommand() *cobra.Command {
 	cmd.Flags().StringVar(&mainPkg, "main", "", "Go main package to build")
 	cmd.Flags().BoolVar(&skipBuild, "skip-build", false, "skip building and package the existing dist directory")
 	cmd.Flags().StringVar(&tag, "tag", "", "tag to write into the OCI layout index")
-	cmd.Flags().StringVar(&pushRef, "push-ref", "", "optional OCI reference to push after packaging")
+	cmd.Flags().StringVar(&push, "push", "", "optional OCI reference to push after packaging")
 	cmd.Flags().BoolVar(&plainHTTP, "plain-http", false, "use plain HTTP for registry push/install flows")
 	cmd.Flags().BoolVar(&delegateGoReleaser, "delegate-goreleaser", false, "delegate provider builds to goreleaser")
 	cmd.Flags().BoolVar(&delegateGoReleaser, "delegate-gorelaser", false, "delegate provider builds to goreleaser")

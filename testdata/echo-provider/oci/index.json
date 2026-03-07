@@ -4,7 +4,7 @@
   "manifests": [
     {
       "mediaType": "application/vnd.oci.image.manifest.v1+json",
-      "digest": "sha256:16e45090c1ae8c4660fa6f2c34037570fa3747169f0777d5152e33c50919a66d",
+      "digest": "sha256:73007f754deab67d753317035db29d66ec899f6674f8b002288cbd39fe1572d1",
       "size": 2718,
       "annotations": {
         "org.opencontainers.image.ref.name": "v0.1.0"

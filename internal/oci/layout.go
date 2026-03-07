@@ -3,6 +3,7 @@ package oci
 import (
 	"archive/tar"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -81,6 +82,7 @@ func Pack(opts PackOptions) (PackResult, error) {
 		Entrypoint:   provider.Spec.Entrypoint,
 		Runtime:      provider.Spec.Runtime,
 		Capabilities: provider.CapabilityNames(),
+		CapabilityDescriptions: capabilityDescriptions(provider),
 		Platforms:    toMetadataPlatforms(provider.Spec.Platforms),
 	}, "", "  ")
 	if err != nil {
@@ -173,10 +175,10 @@ func BinaryMediaType(goos, goarch string) string {
 }
 
 func InstallMetadata(layoutPath, tag, home, alias string) (state.ProviderMetadata, error) {
-	return installMetadata(layoutPath, tag, home, alias, "")
+	return installMetadata(layoutPath, tag, home, alias, "", false)
 }
 
-func installMetadata(layoutPath, tag, home, alias, ref string) (state.ProviderMetadata, error) {
+func installMetadata(layoutPath, tag, home, alias, ref string, plainHTTP bool) (state.ProviderMetadata, error) {
 	provider, _, config, metadata, manifestBytes, metadataBytes, err := readLayout(layoutPath, tag)
 	if err != nil {
 		return state.ProviderMetadata{}, err
@@ -210,8 +212,9 @@ func installMetadata(layoutPath, tag, home, alias, ref string) (state.ProviderMe
 		Runtime:      config.Runtime,
 		Entrypoint:   config.Entrypoint,
 		Capabilities: append([]string(nil), metadata.Capabilities...),
+		CapabilityDescriptions: copyCapabilityDescriptions(metadata.CapabilityDescriptions),
 		Platforms:    toStatePlatforms(metadata.Platforms),
-		Source:       state.Source{LayoutPath: cachedLayoutPath, Tag: tag, Ref: ref},
+		Source:       state.Source{LayoutPath: cachedLayoutPath, Tag: tag, Ref: ref, PlainHTTP: plainHTTP},
 		InstalledAt:  time.Now().UTC(),
 	}
 	if err := state.SaveProviderMetadata(home, meta); err != nil {
@@ -234,6 +237,10 @@ func installMetadata(layoutPath, tag, home, alias, ref string) (state.ProviderMe
 }
 
 func MaterializeRuntime(home string, meta state.ProviderMetadata, goos, goarch string) (string, error) {
+	return materializeRuntime(home, meta, goos, goarch, true)
+}
+
+func materializeRuntime(home string, meta state.ProviderMetadata, goos, goarch string, allowRemoteHydrate bool) (string, error) {
 	provider, view, _, _, _, _, err := readLayout(meta.Source.LayoutPath, meta.Source.Tag)
 	if err != nil {
 		return "", err
@@ -244,6 +251,13 @@ func MaterializeRuntime(home string, meta state.ProviderMetadata, goos, goarch s
 	}
 	if view.AssetsDescriptor != nil {
 		if err := extractTarBlob(meta.Source.LayoutPath, *view.AssetsDescriptor, versionRoot); err != nil {
+			if allowRemoteHydrate && meta.Source.Ref != "" {
+				refreshed, hydrateErr := InstallRemoteFull(context.Background(), home, meta.Source.Ref, "", meta.Source.PlainHTTP)
+				if hydrateErr != nil {
+					return "", err
+				}
+				return materializeRuntime(home, refreshed, goos, goarch, false)
+			}
 			return "", err
 		}
 	}
@@ -261,6 +275,13 @@ func MaterializeRuntime(home string, meta state.ProviderMetadata, goos, goarch s
 	}
 	blob, err := readBlob(meta.Source.LayoutPath, binaryDesc)
 	if err != nil {
+		if allowRemoteHydrate && meta.Source.Ref != "" {
+			refreshed, hydrateErr := InstallRemoteFull(context.Background(), home, meta.Source.Ref, "", meta.Source.PlainHTTP)
+			if hydrateErr != nil {
+				return "", err
+			}
+			return materializeRuntime(home, refreshed, goos, goarch, false)
+		}
 		return "", err
 	}
 	if err := os.MkdirAll(filepath.Dir(binaryPath), 0o755); err != nil {
@@ -270,6 +291,28 @@ func MaterializeRuntime(home string, meta state.ProviderMetadata, goos, goarch s
 		return "", fmt.Errorf("write binary: %w", err)
 	}
 	return binaryPath, nil
+}
+
+func capabilityDescriptions(provider manifest.Provider) map[string]string {
+	if len(provider.Spec.Capabilities) == 0 {
+		return nil
+	}
+	descriptions := make(map[string]string, len(provider.Spec.Capabilities))
+	for name, capability := range provider.Spec.Capabilities {
+		descriptions[name] = capability.Description
+	}
+	return descriptions
+}
+
+func copyCapabilityDescriptions(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	copyMap := make(map[string]string, len(values))
+	for key, value := range values {
+		copyMap[key] = value
+	}
+	return copyMap
 }
 
 func CurrentBinaryPath(home string, meta state.ProviderMetadata) string {

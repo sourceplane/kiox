@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	goruntime "runtime"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -83,15 +84,27 @@ func runAlias(cmd *cobra.Command, opts *rootOptions, args []string) error {
 	if !ok {
 		return fmt.Errorf("unknown command or alias %q", args[0])
 	}
-	if len(args) < 2 {
-		return fmt.Errorf("capability is required for alias %q", args[0])
-	}
-	providerMeta, err := resolveInstalledProvider(home, ref)
+	providerMeta, err := resolveProviderForRun(home, ref, false)
 	if err != nil {
 		return err
 	}
-	if !contains(providerMeta.Capabilities, args[1]) {
-		return fmt.Errorf("provider %s does not expose capability %q", ref, args[1])
+	if len(args) == 1 || isHelpToken(args[1]) {
+		writeProviderHelp(cmd.OutOrStdout(), args[0], ref, providerMeta)
+		return nil
+	}
+	if len(args) >= 3 && isHelpToken(args[2]) {
+		writeCapabilityHelp(cmd.OutOrStdout(), args[0], args[1], providerMeta)
+		return nil
+	}
+	return executeProviderCapability(cmd, home, ref, providerMeta, args[1:])
+}
+
+func executeProviderCapability(cmd *cobra.Command, home, providerRef string, providerMeta state.ProviderMetadata, args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("capability is required")
+	}
+	if !contains(providerMeta.Capabilities, args[0]) {
+		return fmt.Errorf("provider %s does not expose capability %q", providerRef, args[0])
 	}
 	binaryPath, err := oci.MaterializeRuntime(home, providerMeta, goruntime.GOOS, goruntime.GOARCH)
 	if err != nil {
@@ -100,7 +113,7 @@ func runAlias(cmd *cobra.Command, opts *rootOptions, args []string) error {
 	providerHome := providerHomeFromBinary(binaryPath)
 	return tinxruntime.Execute(tinxruntime.ExecOptions{
 		BinaryPath:   binaryPath,
-		Args:         args[1:],
+		Args:         args,
 		WorkingDir:   mustGetwd(),
 		ProviderHome: providerHome,
 		TinxVersion:  version.String(),
@@ -108,6 +121,108 @@ func runAlias(cmd *cobra.Command, opts *rootOptions, args []string) error {
 		Stderr:       cmd.ErrOrStderr(),
 		Stdin:        os.Stdin,
 	})
+}
+
+func resolveProviderForRun(home, ref string, plainHTTP bool) (state.ProviderMetadata, error) {
+	providerMeta, err := resolveInstalledProvider(home, ref)
+	if err == nil {
+		return providerMeta, nil
+	}
+	if !isOCIReference(ref) {
+		return state.ProviderMetadata{}, err
+	}
+	if installedRef, ok := providerRefFromOCIReference(ref); ok {
+		if installedMeta, installedErr := resolveInstalledProvider(home, installedRef); installedErr == nil {
+			return installedMeta, nil
+		}
+	}
+	installed, installErr := oci.InstallRemoteFull(context.Background(), home, ref, "", plainHTTP)
+	if installErr != nil {
+		return state.ProviderMetadata{}, err
+	}
+	return installed, nil
+}
+
+func writeProviderHelp(w io.Writer, alias, providerRef string, providerMeta state.ProviderMetadata) {
+	writeLine(w, "Provider: %s/%s %s", providerMeta.Namespace, providerMeta.Name, providerMeta.Version)
+	if providerMeta.Description != "" {
+		writeLine(w, "")
+		writeLine(w, "%s", providerMeta.Description)
+	}
+	writeLine(w, "")
+	writeLine(w, "Capabilities:")
+	capabilities := append([]string(nil), providerMeta.Capabilities...)
+	sort.Strings(capabilities)
+	for _, capability := range capabilities {
+		description := ""
+		if providerMeta.CapabilityDescriptions != nil {
+			description = providerMeta.CapabilityDescriptions[capability]
+		}
+		if description == "" {
+			writeLine(w, "  %s", capability)
+			continue
+		}
+		writeLine(w, "  %-12s %s", capability, description)
+	}
+	writeLine(w, "")
+	writeLine(w, "Usage:")
+	writeLine(w, "  tinx %s <capability> [flags]", alias)
+	writeLine(w, "  tinx run %s <capability> [flags]", providerRef)
+}
+
+func writeCapabilityHelp(w io.Writer, alias, capability string, providerMeta state.ProviderMetadata) {
+	writeLine(w, "Capability: %s", capability)
+	if providerMeta.CapabilityDescriptions != nil {
+		if description := providerMeta.CapabilityDescriptions[capability]; description != "" {
+			writeLine(w, "")
+			writeLine(w, "Description:")
+			writeLine(w, "  %s", description)
+		}
+	}
+	writeLine(w, "")
+	writeLine(w, "Usage:")
+	writeLine(w, "  tinx %s %s [flags]", alias, capability)
+}
+
+func isHelpToken(value string) bool {
+	return value == "-h" || value == "--help" || value == "help"
+}
+
+func isOCIReference(ref string) bool {
+	if strings.Contains(ref, "@") {
+		return true
+	}
+	if strings.Count(ref, "/") >= 2 {
+		return true
+	}
+	if idx := strings.LastIndex(ref, ":"); idx > 0 {
+		after := ref[idx+1:]
+		if !strings.Contains(after, "/") {
+			return true
+		}
+	}
+	if slash := strings.Index(ref, "/"); slash > 0 {
+		return strings.Contains(ref[:slash], ".")
+	}
+	return false
+}
+
+func providerRefFromOCIReference(ref string) (string, bool) {
+	repository := ref
+	if at := strings.Index(repository, "@"); at >= 0 {
+		repository = repository[:at]
+	}
+	if idx := strings.LastIndex(repository, ":"); idx > 0 {
+		after := repository[idx+1:]
+		if !strings.Contains(after, "/") {
+			repository = repository[:idx]
+		}
+	}
+	segments := strings.Split(repository, "/")
+	if len(segments) < 3 {
+		return "", false
+	}
+	return segments[len(segments)-2] + "/" + segments[len(segments)-1], true
 }
 
 func providerHomeFromBinary(binaryPath string) string {

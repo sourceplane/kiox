@@ -50,7 +50,7 @@ jobs:
             --main ./cmd/echo-provider \
             --dist testdata/echo-provider/dist \
             --output testdata/echo-provider/oci \
-            --push-ref "${{ steps.vars.outputs.ref }}"
+            --push "${{ steps.vars.outputs.ref }}"
 
       - name: Install and run from GHCR
         env:
@@ -58,6 +58,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd testdata/echo-provider
-          ../../bin/tinx --tinx-home "$RUNNER_TEMP/tinx-home" install sourceplane/echo-provider --ref "${{ steps.vars.outputs.ref }}" --alias echo
+          ../../bin/tinx --tinx-home "$RUNNER_TEMP/tinx-home" install echo "${{ steps.vars.outputs.ref }}"
           ../../bin/tinx --tinx-home "$RUNNER_TEMP/tinx-home" run echo plan --intent intent.yaml | tee "$RUNNER_TEMP/echo-run.out"
           grep -q "capability=plan" "$RUNNER_TEMP/echo-run.out"

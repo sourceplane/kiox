@@ -1,61 +1,56 @@
 package cmd
 
 import (
-	"fmt"
-	"os"
-	goruntime "runtime"
-
 	"github.com/spf13/cobra"
 
-	"github.com/sourceplane/tinx/internal/oci"
-	tinxruntime "github.com/sourceplane/tinx/internal/runtime"
 	"github.com/sourceplane/tinx/internal/state"
-	"github.com/sourceplane/tinx/pkg/version"
 )
 
 func newRunCommand(root *rootOptions) *cobra.Command {
+	var plainHTTP bool
+
 	cmd := &cobra.Command{
 		Use:   "run <provider-or-alias> <capability> [args...]",
-		Short: "Execute an installed provider capability",
+		Short: "Execute a provider capability from an alias, installed provider, or OCI reference",
 		FParseErrWhitelist: cobra.FParseErrWhitelist{
 			UnknownFlags: true,
 		},
-		Args: cobra.MinimumNArgs(2),
+		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			home, err := ensureHome(root.Home)
 			if err != nil {
 				return err
 			}
-			ref := args[0]
+			input := args[0]
+			aliasName := ""
+			ref := input
 			if aliases, err := state.LoadAliases(home); err == nil {
-				if aliased, ok := aliases[ref]; ok {
+				if aliased, ok := aliases[input]; ok {
+					aliasName = input
 					ref = aliased
 				}
 			}
-			providerMeta, err := resolveInstalledProvider(home, ref)
+			providerMeta, err := resolveProviderForRun(home, ref, plainHTTP)
 			if err != nil {
 				return err
 			}
-			if !contains(providerMeta.Capabilities, args[1]) {
-				return fmt.Errorf("provider %s does not expose capability %q", ref, args[1])
+			helpAlias := aliasName
+			if helpAlias == "" {
+				helpAlias = input
 			}
-			binaryPath, err := oci.MaterializeRuntime(home, providerMeta, goruntime.GOOS, goruntime.GOARCH)
-			if err != nil {
-				return err
+			if len(args) == 1 || isHelpToken(args[1]) {
+				writeProviderHelp(cmd.OutOrStdout(), helpAlias, ref, providerMeta)
+				return nil
 			}
-			providerHome := providerHomeFromBinary(binaryPath)
-			return tinxruntime.Execute(tinxruntime.ExecOptions{
-				BinaryPath:   binaryPath,
-				Args:         args[1:],
-				WorkingDir:   mustGetwd(),
-				ProviderHome: providerHome,
-				TinxVersion:  version.String(),
-				Stdout:       cmd.OutOrStdout(),
-				Stderr:       cmd.ErrOrStderr(),
-				Stdin:        os.Stdin,
-			})
+			if len(args) >= 3 && isHelpToken(args[2]) {
+				writeCapabilityHelp(cmd.OutOrStdout(), helpAlias, args[1], providerMeta)
+				return nil
+			}
+
+			return executeProviderCapability(cmd, home, ref, providerMeta, args[1:])
 		},
 	}
+	cmd.Flags().BoolVar(&plainHTTP, "plain-http", false, "use plain HTTP for registry pull/install")
 	return cmd
 }
 

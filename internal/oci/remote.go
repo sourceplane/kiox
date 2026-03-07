@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	oras "oras.land/oras-go/v2"
 	ocistore "oras.land/oras-go/v2/content/oci"
 	"oras.land/oras-go/v2/registry/remote"
@@ -37,6 +38,20 @@ func PushLayout(ctx context.Context, layoutPath, tag, ref string, plainHTTP bool
 }
 
 func InstallRemote(ctx context.Context, home, ref, alias string, plainHTTP bool) (state.ProviderMetadata, error) {
+	if cached, ok := cachedRemoteInstall(home, ref, false); ok {
+		return cached, nil
+	}
+	return installRemote(ctx, home, ref, alias, plainHTTP, true)
+}
+
+func InstallRemoteFull(ctx context.Context, home, ref, alias string, plainHTTP bool) (state.ProviderMetadata, error) {
+	if cached, ok := cachedRemoteInstall(home, ref, true); ok {
+		return cached, nil
+	}
+	return installRemote(ctx, home, ref, alias, plainHTTP, false)
+}
+
+func installRemote(ctx context.Context, home, ref, alias string, plainHTTP, metadataOnly bool) (state.ProviderMetadata, error) {
 	tempDir, err := os.MkdirTemp("", "tinx-oci-*")
 	if err != nil {
 		return state.ProviderMetadata{}, fmt.Errorf("create temp OCI layout: %w", err)
@@ -55,10 +70,21 @@ func InstallRemote(ctx context.Context, home, ref, alias string, plainHTTP bool)
 	}
 	repo.PlainHTTP = plainHTTP
 	configureRepositoryAuth(repo)
-	if _, err := oras.Copy(ctx, repo, tag, store, tag, oras.DefaultCopyOptions); err != nil {
+	copyOptions := oras.DefaultCopyOptions
+	if metadataOnly {
+		copyOptions.PreCopy = func(_ context.Context, descriptor ocispec.Descriptor) error {
+			switch descriptor.MediaType {
+			case ocispec.MediaTypeImageManifest, MediaTypeConfig, MediaTypeManifest, MediaTypeMetadata:
+				return nil
+			default:
+				return oras.SkipNode
+			}
+		}
+	}
+	if _, err := oras.Copy(ctx, repo, tag, store, tag, copyOptions); err != nil {
 		return state.ProviderMetadata{}, fmt.Errorf("pull artifact: %w", err)
 	}
-	meta, err := installMetadata(tempDir, tag, home, alias, ref)
+	meta, err := installMetadata(tempDir, tag, home, alias, ref, plainHTTP)
 	if err != nil {
 		return state.ProviderMetadata{}, err
 	}
@@ -78,6 +104,62 @@ func parseReference(ref string) (repository, tag string) {
 		}
 	}
 	return repository, tag
+}
+
+func cachedRemoteInstall(home, ref string, requireRuntimeBlobs bool) (state.ProviderMetadata, bool) {
+	namespace, name, ok := providerRefFromReference(ref)
+	if !ok {
+		return state.ProviderMetadata{}, false
+	}
+	meta, err := state.LoadProviderMetadata(home, namespace, name)
+	if err != nil {
+		return state.ProviderMetadata{}, false
+	}
+	if meta.Source.Ref != "" && meta.Source.Ref == ref {
+		if requireRuntimeBlobs {
+			if !layoutHasRuntimeBlobs(meta.Source.LayoutPath, meta.Source.Tag) {
+				return state.ProviderMetadata{}, false
+			}
+		}
+		return meta, true
+	}
+	return state.ProviderMetadata{}, false
+}
+
+func layoutHasRuntimeBlobs(layoutPath, tag string) bool {
+	_, view, _, _, _, _, err := readLayout(layoutPath, tag)
+	if err != nil {
+		return false
+	}
+	if view.AssetsDescriptor != nil {
+		if _, err := readBlob(layoutPath, *view.AssetsDescriptor); err != nil {
+			return false
+		}
+	}
+	for _, descriptor := range view.BinaryDescriptors {
+		if _, err := readBlob(layoutPath, descriptor); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+func providerRefFromReference(ref string) (string, string, bool) {
+	repository := ref
+	if at := strings.Index(repository, "@"); at >= 0 {
+		repository = repository[:at]
+	}
+	if idx := strings.LastIndex(repository, ":"); idx > 0 {
+		after := repository[idx+1:]
+		if !strings.Contains(after, "/") {
+			repository = repository[:idx]
+		}
+	}
+	segments := strings.Split(repository, "/")
+	if len(segments) < 3 {
+		return "", "", false
+	}
+	return segments[len(segments)-2], segments[len(segments)-1], true
 }
 
 func configureRepositoryAuth(repo *remote.Repository) {

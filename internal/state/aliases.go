@@ -13,6 +13,10 @@ type AliasFile struct {
 }
 
 func aliasPath(home string) string {
+	return filepath.Join(home, "config.yaml")
+}
+
+func legacyAliasPath(home string) string {
 	return filepath.Join(home, "aliases.yaml")
 }
 
@@ -20,9 +24,17 @@ func LoadAliases(home string) (map[string]string, error) {
 	data, err := os.ReadFile(aliasPath(home))
 	if err != nil {
 		if os.IsNotExist(err) {
-			return map[string]string{}, nil
+			legacyData, legacyErr := os.ReadFile(legacyAliasPath(home))
+			if legacyErr != nil {
+				if os.IsNotExist(legacyErr) {
+					return map[string]string{}, nil
+				}
+				return nil, fmt.Errorf("read aliases: %w", legacyErr)
+			}
+			data = legacyData
+		} else {
+			return nil, fmt.Errorf("read aliases: %w", err)
 		}
-		return nil, fmt.Errorf("read aliases: %w", err)
 	}
 	var file AliasFile
 	if err := yaml.Unmarshal(data, &file); err != nil {
