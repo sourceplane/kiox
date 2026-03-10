@@ -58,7 +58,8 @@ resolve_version() {
 }
 
 VERSION="$(resolve_version)"
-ARCHIVE="${BIN_NAME}_${VERSION}_${OS}_${ARCH}.tar.gz"
+ASSET_VERSION="${VERSION#v}"
+ARCHIVE="${BIN_NAME}_${ASSET_VERSION}_${OS}_${ARCH}.tar.gz"
 URL="https://github.com/${REPO}/releases/download/${VERSION}/${ARCHIVE}"
 
 TMP_DIR="$(mktemp -d)"
