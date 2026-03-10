@@ -1,5 +1,9 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/usr/bin/env sh
+set -eu
+
+if (set -o pipefail) >/dev/null 2>&1; then
+  set -o pipefail
+fi
 
 REPO="${TINX_REPO:-sourceplane/tinx}"
 BIN_NAME="${TINX_BIN_NAME:-tinx}"
@@ -37,16 +41,15 @@ case "$ARCH" in
 esac
 
 resolve_version() {
-  if [[ "$REQUESTED_VERSION" != "latest" ]]; then
+  if [ "$REQUESTED_VERSION" != "latest" ]; then
     echo "$REQUESTED_VERSION"
     return
   fi
 
-  local api="https://api.github.com/repos/${REPO}/releases/latest"
-  local tag
+  api="https://api.github.com/repos/${REPO}/releases/latest"
   tag="$(curl -fsSL "$api" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
 
-  if [[ -z "$tag" ]]; then
+  if [ -z "$tag" ]; then
     echo "error: could not resolve latest release tag from ${api}" >&2
     exit 1
   fi
@@ -71,7 +74,7 @@ curl -fL "$URL" -o "$TMP_DIR/$ARCHIVE"
 
 tar -xzf "$TMP_DIR/$ARCHIVE" -C "$TMP_DIR"
 
-if [[ ! -f "$TMP_DIR/$BIN_NAME" ]]; then
+if [ ! -f "$TMP_DIR/$BIN_NAME" ]; then
   echo "error: archive did not contain expected binary: ${BIN_NAME}" >&2
   exit 1
 fi
