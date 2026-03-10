@@ -26,15 +26,15 @@ type ProviderConfig struct {
 }
 
 type ProviderMetadata struct {
-	Namespace    string             `json:"namespace"`
-	Name         string             `json:"name"`
-	Version      string             `json:"version"`
-	Description  string             `json:"description,omitempty"`
-	Entrypoint   string             `json:"entrypoint"`
-	Runtime      string             `json:"runtime"`
-	Capabilities []string           `json:"capabilities,omitempty"`
-	CapabilityDescriptions map[string]string `json:"capabilityDescriptions,omitempty"`
-	Platforms    []ProviderPlatform `json:"platforms,omitempty"`
+	Namespace              string             `json:"namespace"`
+	Name                   string             `json:"name"`
+	Version                string             `json:"version"`
+	Description            string             `json:"description,omitempty"`
+	Entrypoint             string             `json:"entrypoint"`
+	Runtime                string             `json:"runtime"`
+	Capabilities           []string           `json:"capabilities,omitempty"`
+	CapabilityDescriptions map[string]string  `json:"capabilityDescriptions,omitempty"`
+	Platforms              []ProviderPlatform `json:"platforms,omitempty"`
 }
 
 type ProviderPlatform struct {

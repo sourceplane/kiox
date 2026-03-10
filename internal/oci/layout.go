@@ -23,6 +23,7 @@ import (
 
 	"github.com/sourceplane/tinx/internal/manifest"
 	"github.com/sourceplane/tinx/internal/state"
+	"github.com/sourceplane/tinx/internal/ui/progress"
 )
 
 const layoutVersion = "1.0.0"
@@ -75,15 +76,15 @@ func Pack(opts PackOptions) (PackResult, error) {
 		return PackResult{}, fmt.Errorf("marshal config: %w", err)
 	}
 	metadataBytes, err := json.MarshalIndent(ProviderMetadata{
-		Namespace:    provider.Metadata.Namespace,
-		Name:         provider.Metadata.Name,
-		Version:      provider.Metadata.Version,
-		Description:  provider.Metadata.Description,
-		Entrypoint:   provider.Spec.Entrypoint,
-		Runtime:      provider.Spec.Runtime,
-		Capabilities: provider.CapabilityNames(),
+		Namespace:              provider.Metadata.Namespace,
+		Name:                   provider.Metadata.Name,
+		Version:                provider.Metadata.Version,
+		Description:            provider.Metadata.Description,
+		Entrypoint:             provider.Spec.Entrypoint,
+		Runtime:                provider.Spec.Runtime,
+		Capabilities:           provider.CapabilityNames(),
 		CapabilityDescriptions: capabilityDescriptions(provider),
-		Platforms:    toMetadataPlatforms(provider.Spec.Platforms),
+		Platforms:              toMetadataPlatforms(provider.Spec.Platforms),
 	}, "", "  ")
 	if err != nil {
 		return PackResult{}, fmt.Errorf("marshal metadata: %w", err)
@@ -174,20 +175,25 @@ func BinaryMediaType(goos, goarch string) string {
 	return fmt.Sprintf("application/vnd.tinx.provider.binary.%s.%s.v1", goos, goarch)
 }
 
-func InstallMetadata(layoutPath, tag, home, alias string) (state.ProviderMetadata, error) {
-	return installMetadata(layoutPath, tag, home, alias, "", false)
+func InstallMetadata(layoutPath, tag, home, alias string, out io.Writer) (state.ProviderMetadata, error) {
+	tracker := progress.New(out)
+	defer tracker.Finish()
+	tracker.Step("lookup", "reading local OCI layout")
+	return installMetadata(layoutPath, tag, home, alias, "", false, tracker)
 }
 
-func installMetadata(layoutPath, tag, home, alias, ref string, plainHTTP bool) (state.ProviderMetadata, error) {
+func installMetadata(layoutPath, tag, home, alias, ref string, plainHTTP bool, tracker *progress.Tracker) (state.ProviderMetadata, error) {
 	provider, _, config, metadata, manifestBytes, metadataBytes, err := readLayout(layoutPath, tag)
 	if err != nil {
 		return state.ProviderMetadata{}, err
 	}
+	tracker.Done("lookup", fmt.Sprintf("resolved %s/%s@%s", config.Namespace, config.Name, config.Version))
 
 	versionRoot := state.VersionRoot(home, provider.Metadata.Namespace, provider.Metadata.Name, provider.Metadata.Version)
 	if err := os.MkdirAll(versionRoot, 0o755); err != nil {
 		return state.ProviderMetadata{}, fmt.Errorf("create version root: %w", err)
 	}
+	tracker.Step("cache", "preparing provider cache")
 	cachedLayoutPath := filepath.Join(versionRoot, "oci")
 	if err := os.RemoveAll(cachedLayoutPath); err != nil {
 		return state.ProviderMetadata{}, fmt.Errorf("reset cached layout: %w", err)
@@ -195,6 +201,7 @@ func installMetadata(layoutPath, tag, home, alias, ref string, plainHTTP bool) (
 	if err := copyDirectory(layoutPath, cachedLayoutPath); err != nil {
 		return state.ProviderMetadata{}, fmt.Errorf("cache OCI layout: %w", err)
 	}
+	tracker.Info("cache", "cached OCI blobs")
 	if err := os.WriteFile(filepath.Join(versionRoot, "tinx.yaml"), manifestBytes, 0o644); err != nil {
 		return state.ProviderMetadata{}, fmt.Errorf("cache manifest: %w", err)
 	}
@@ -203,23 +210,24 @@ func installMetadata(layoutPath, tag, home, alias, ref string, plainHTTP bool) (
 	}
 
 	meta := state.ProviderMetadata{
-		Namespace:    config.Namespace,
-		Name:         config.Name,
-		Version:      config.Version,
-		Description:  config.Description,
-		Homepage:     config.Homepage,
-		License:      config.License,
-		Runtime:      config.Runtime,
-		Entrypoint:   config.Entrypoint,
-		Capabilities: append([]string(nil), metadata.Capabilities...),
+		Namespace:              config.Namespace,
+		Name:                   config.Name,
+		Version:                config.Version,
+		Description:            config.Description,
+		Homepage:               config.Homepage,
+		License:                config.License,
+		Runtime:                config.Runtime,
+		Entrypoint:             config.Entrypoint,
+		Capabilities:           append([]string(nil), metadata.Capabilities...),
 		CapabilityDescriptions: copyCapabilityDescriptions(metadata.CapabilityDescriptions),
-		Platforms:    toStatePlatforms(metadata.Platforms),
-		Source:       state.Source{LayoutPath: cachedLayoutPath, Tag: tag, Ref: ref, PlainHTTP: plainHTTP},
-		InstalledAt:  time.Now().UTC(),
+		Platforms:              toStatePlatforms(metadata.Platforms),
+		Source:                 state.Source{LayoutPath: cachedLayoutPath, Tag: tag, Ref: ref, PlainHTTP: plainHTTP},
+		InstalledAt:            time.Now().UTC(),
 	}
 	if err := state.SaveProviderMetadata(home, meta); err != nil {
 		return state.ProviderMetadata{}, err
 	}
+	tracker.Info("install", "persisted provider metadata")
 	if err := state.SaveInstallSource(home, meta.Namespace, meta.Name, meta.Version, meta.Source); err != nil {
 		return state.ProviderMetadata{}, err
 	}
@@ -232,15 +240,20 @@ func installMetadata(layoutPath, tag, home, alias, ref string, plainHTTP bool) (
 		if err := state.SaveAliases(home, aliases); err != nil {
 			return state.ProviderMetadata{}, err
 		}
+		tracker.Info("install", fmt.Sprintf("updated alias %s", alias))
 	}
+	tracker.Done("cache", "provider cached locally")
 	return meta, nil
 }
 
-func MaterializeRuntime(home string, meta state.ProviderMetadata, goos, goarch string) (string, error) {
-	return materializeRuntime(home, meta, goos, goarch, true)
+func MaterializeRuntime(home string, meta state.ProviderMetadata, goos, goarch string, out io.Writer) (string, error) {
+	tracker := progress.New(out)
+	defer tracker.Finish()
+	return materializeRuntime(home, meta, goos, goarch, true, tracker)
 }
 
-func materializeRuntime(home string, meta state.ProviderMetadata, goos, goarch string, allowRemoteHydrate bool) (string, error) {
+func materializeRuntime(home string, meta state.ProviderMetadata, goos, goarch string, allowRemoteHydrate bool, tracker *progress.Tracker) (string, error) {
+	tracker.Step("runtime", fmt.Sprintf("resolving %s/%s for %s/%s", meta.Namespace, meta.Name, goos, goarch))
 	provider, view, _, _, _, _, err := readLayout(meta.Source.LayoutPath, meta.Source.Tag)
 	if err != nil {
 		return "", err
@@ -250,13 +263,15 @@ func materializeRuntime(home string, meta state.ProviderMetadata, goos, goarch s
 		return "", fmt.Errorf("create version root: %w", err)
 	}
 	if view.AssetsDescriptor != nil {
+		tracker.Info("runtime", "extracting cached assets")
 		if err := extractTarBlob(meta.Source.LayoutPath, *view.AssetsDescriptor, versionRoot); err != nil {
 			if allowRemoteHydrate && meta.Source.Ref != "" {
-				refreshed, hydrateErr := InstallRemoteFull(context.Background(), home, meta.Source.Ref, "", meta.Source.PlainHTTP)
+				tracker.Info("hydrate", "cached assets incomplete, hydrating from remote")
+				refreshed, hydrateErr := InstallRemoteFull(context.Background(), home, meta.Source.Ref, "", meta.Source.PlainHTTP, tracker.Writer())
 				if hydrateErr != nil {
 					return "", err
 				}
-				return materializeRuntime(home, refreshed, goos, goarch, false)
+				return materializeRuntime(home, refreshed, goos, goarch, false, tracker)
 			}
 			return "", err
 		}
@@ -270,17 +285,21 @@ func materializeRuntime(home string, meta state.ProviderMetadata, goos, goarch s
 		return "", fmt.Errorf("binary layer missing for %s/%s", goos, goarch)
 	}
 	binaryPath := filepath.Join(versionRoot, filepath.FromSlash(platform.Binary))
+	binaryName := filepath.Base(binaryPath)
 	if exists(binaryPath) {
+		tracker.Cached("runtime", fmt.Sprintf("cached %s", binaryName))
 		return binaryPath, nil
 	}
+	tracker.Info("runtime", "extracting provider binary from cache")
 	blob, err := readBlob(meta.Source.LayoutPath, binaryDesc)
 	if err != nil {
 		if allowRemoteHydrate && meta.Source.Ref != "" {
-			refreshed, hydrateErr := InstallRemoteFull(context.Background(), home, meta.Source.Ref, "", meta.Source.PlainHTTP)
+			tracker.Info("hydrate", "binary blob missing, hydrating from remote")
+			refreshed, hydrateErr := InstallRemoteFull(context.Background(), home, meta.Source.Ref, "", meta.Source.PlainHTTP, tracker.Writer())
 			if hydrateErr != nil {
 				return "", err
 			}
-			return materializeRuntime(home, refreshed, goos, goarch, false)
+			return materializeRuntime(home, refreshed, goos, goarch, false, tracker)
 		}
 		return "", err
 	}
@@ -290,6 +309,7 @@ func materializeRuntime(home string, meta state.ProviderMetadata, goos, goarch s
 	if err := os.WriteFile(binaryPath, blob, 0o755); err != nil {
 		return "", fmt.Errorf("write binary: %w", err)
 	}
+	tracker.Done("runtime", fmt.Sprintf("ready %s", binaryName))
 	return binaryPath, nil
 }
 
