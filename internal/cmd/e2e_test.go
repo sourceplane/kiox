@@ -216,6 +216,19 @@ func TestRunDirectFromRegistryWithoutInstall(t *testing.T) {
 	if !bytes.Contains(runBuf.Bytes(), []byte("capability=plan")) {
 		t.Fatalf("unexpected direct run output: %s", runBuf.String())
 	}
+	if !bytes.Contains(runBuf.Bytes(), []byte("args=--intent,intent.yaml")) {
+		t.Fatalf("expected provider args to include --intent, got: %s", runBuf.String())
+	}
+
+	runWithConfigBuf := runRootCommand(t, []string{
+		"--tinx-home", home,
+		"run", ref, "plan",
+		"--config-dir", "/tmp/compositions",
+		"--plain-http",
+	})
+	if !bytes.Contains(runWithConfigBuf.Bytes(), []byte("args=--config-dir,/tmp/compositions")) {
+		t.Fatalf("expected provider args to include --config-dir, got: %s", runWithConfigBuf.String())
+	}
 }
 
 func TestRunThenInstallUsesCachedRemoteProvider(t *testing.T) {
