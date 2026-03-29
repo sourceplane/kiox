@@ -14,8 +14,8 @@ func newRunCommand(root *rootOptions) *cobra.Command {
 	var plainHTTP bool
 
 	cmd := &cobra.Command{
-		Use:   "run <provider-or-alias> <capability> [args...]",
-		Short: "Execute a provider capability from an alias, installed provider, or OCI reference",
+		Use:   "run <provider-or-alias> [capability] [args...]",
+		Short: "Execute a provider capability or GitHub Action from an alias, installed provider, or remote reference",
 		FParseErrWhitelist: cobra.FParseErrWhitelist{
 			UnknownFlags: true,
 		},
@@ -49,16 +49,17 @@ func newRunCommand(root *rootOptions) *cobra.Command {
 			if helpAlias == "" {
 				helpAlias = input
 			}
-			if len(filteredArgs) == 1 || isHelpToken(filteredArgs[1]) {
+			invocation := planProviderInvocation(providerMeta, filteredArgs[1:])
+			if invocation.showProviderHelp {
 				writeProviderHelp(cmd.OutOrStdout(), helpAlias, ref, providerMeta)
 				return nil
 			}
-			if len(filteredArgs) >= 3 && isHelpToken(filteredArgs[2]) {
-				writeCapabilityHelp(cmd.OutOrStdout(), helpAlias, filteredArgs[1], providerMeta)
+			if invocation.showCapabilityHelp {
+				writeCapabilityHelp(cmd.OutOrStdout(), helpAlias, ref, invocation.capability, providerMeta)
 				return nil
 			}
 
-			return executeProviderCapability(cmd, home, ref, providerMeta, filteredArgs[1:])
+			return executeProviderCapability(cmd, home, ref, providerMeta, invocation.args)
 		},
 	}
 	cmd.Flags().SetInterspersed(false)
