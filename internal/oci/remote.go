@@ -46,6 +46,9 @@ func InstallRemote(ctx context.Context, home, ref, alias string, plainHTTP bool,
 	tracker.Step("lookup", fmt.Sprintf("checking local cache for %s", ref))
 	if cached, ok := cachedRemoteInstall(home, ref, false); ok {
 		tracker.Cached("cache", fmt.Sprintf("using cached metadata %s/%s@%s", cached.Namespace, cached.Name, cached.Version))
+		if err := updateAlias(home, alias, cached); err != nil {
+			return state.ProviderMetadata{}, err
+		}
 		return cached, nil
 	}
 	return installRemote(ctx, home, ref, alias, plainHTTP, true, tracker)
@@ -57,6 +60,9 @@ func InstallRemoteFull(ctx context.Context, home, ref, alias string, plainHTTP b
 	tracker.Step("lookup", fmt.Sprintf("checking local cache for %s", ref))
 	if cached, ok := cachedRemoteInstall(home, ref, true); ok {
 		tracker.Cached("cache", fmt.Sprintf("using cached runtime %s/%s@%s", cached.Namespace, cached.Name, cached.Version))
+		if err := updateAlias(home, alias, cached); err != nil {
+			return state.ProviderMetadata{}, err
+		}
 		return cached, nil
 	}
 	return installRemote(ctx, home, ref, alias, plainHTTP, false, tracker)
@@ -237,6 +243,18 @@ func configureRepositoryAuth(repo *remote.Repository) {
 			return auth.EmptyCredential, nil
 		},
 	}
+}
+
+func updateAlias(home, alias string, meta state.ProviderMetadata) error {
+	if alias == "" {
+		return nil
+	}
+	aliases, err := state.LoadAliases(home)
+	if err != nil {
+		return err
+	}
+	aliases[alias] = meta.Namespace + "/" + meta.Name
+	return state.SaveAliases(home, aliases)
 }
 
 func credentialFromEnv(hostport string) (auth.Credential, bool) {

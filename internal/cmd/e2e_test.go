@@ -3,14 +3,22 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"testing"
+	"time"
 
+	git "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	gcrregistry "github.com/google/go-containerregistry/pkg/registry"
+	"github.com/spf13/cobra"
+
+	"github.com/sourceplane/tinx/internal/state"
 )
 
 func TestReleaseInstallAndRun(t *testing.T) {
@@ -330,6 +338,176 @@ func TestRunProviderHelpFromAlias(t *testing.T) {
 	}
 }
 
+func TestRunGitHubCompositeActionDirectly(t *testing.T) {
+	workspace := t.TempDir()
+	home := filepath.Join(workspace, ".tinx-home")
+	repoRoot := filepath.Join(workspace, "gha-repos")
+	ref := createTestGitHubActionRepo(t, repoRoot)
+	t.Setenv("TINX_GHA_REPO_ROOT", repoRoot)
+
+	runBuf := runRootCommand(t, []string{
+		"--tinx-home", home,
+		"run", ref,
+		"--input=tool-name=alpha",
+	})
+	output := runBuf.String()
+	for _, expected := range []string{
+		"had_tool=false",
+		"install_state=fresh",
+		"tool_name=alpha",
+		"resolved_tool=tool=alpha",
+		"tinx_path=",
+	} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("expected %q in output, got: %s", expected, output)
+		}
+	}
+
+	statePath := filepath.Join(home, "providers", "gha", "acme", "setup-echo", "v1", "gha-runtime-state.json")
+	data, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatalf("read GitHub Action runtime state: %v", err)
+	}
+	var runtimeState struct {
+		Outputs map[string]string `json:"outputs"`
+	}
+	if err := json.Unmarshal(data, &runtimeState); err != nil {
+		t.Fatalf("decode GitHub Action runtime state: %v", err)
+	}
+	if runtimeState.Outputs["install-state"] != "fresh" {
+		t.Fatalf("expected install-state output to be fresh, got %q", runtimeState.Outputs["install-state"])
+	}
+}
+
+func TestInstallGitHubCompositeActionAliasPersistsRuntimeState(t *testing.T) {
+	workspace := t.TempDir()
+	home := filepath.Join(workspace, ".tinx-home")
+	repoRoot := filepath.Join(workspace, "gha-repos")
+	ref := createTestGitHubActionRepo(t, repoRoot)
+	t.Setenv("TINX_GHA_REPO_ROOT", repoRoot)
+
+	installBuf := runRootCommand(t, []string{
+		"--tinx-home", home,
+		"install", "setup", ref,
+	})
+	if !bytes.Contains(installBuf.Bytes(), []byte("installed gha/setup@v1")) {
+		t.Fatalf("unexpected install output: %s", installBuf.String())
+	}
+
+	helpBuf := runAliasCommand(t, home, []string{"setup", "help"})
+	if !bytes.Contains(helpBuf.Bytes(), []byte("Inputs:")) || !bytes.Contains(helpBuf.Bytes(), []byte("tool-name")) {
+		t.Fatalf("expected GitHub Action help to include inputs, got: %s", helpBuf.String())
+	}
+
+	firstRun := runAliasCommand(t, home, []string{"setup", "--input=tool-name=alpha"})
+	if !bytes.Contains(firstRun.Bytes(), []byte("had_tool=false")) || !bytes.Contains(firstRun.Bytes(), []byte("install_state=fresh")) {
+		t.Fatalf("unexpected first alias run output: %s", firstRun.String())
+	}
+
+	secondRun := runAliasCommand(t, home, []string{"setup", "--input=tool-name=alpha"})
+	if !bytes.Contains(secondRun.Bytes(), []byte("had_tool=true")) || !bytes.Contains(secondRun.Bytes(), []byte("install_state=cached")) {
+		t.Fatalf("expected persisted GitHub Action runtime state, got: %s", secondRun.String())
+	}
+}
+
+func TestRunGitHubNodeActionDirectly(t *testing.T) {
+	workspace := t.TempDir()
+	home := filepath.Join(workspace, ".tinx-home")
+	repoRoot := filepath.Join(workspace, "gha-repos")
+	ref := createTestGitHubNodeActionRepo(t, repoRoot)
+	t.Setenv("TINX_GHA_REPO_ROOT", repoRoot)
+
+	runBuf := runRootCommand(t, []string{
+		"--tinx-home", home,
+		"run", ref,
+		"--input=tool-name=beta",
+	})
+	output := runBuf.String()
+	for _, expected := range []string{
+		"had_tool=false",
+		"install_state=fresh",
+		"tool_name=beta",
+		"runner_tool_cache=",
+	} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("expected %q in output, got: %s", expected, output)
+		}
+	}
+
+	statePath := filepath.Join(home, "providers", "gha", "acme", "setup-node-echo", "v1", "gha-runtime-state.json")
+	data, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatalf("read GitHub Action runtime state: %v", err)
+	}
+	var runtimeState struct {
+		Outputs map[string]string `json:"outputs"`
+	}
+	if err := json.Unmarshal(data, &runtimeState); err != nil {
+		t.Fatalf("decode GitHub Action runtime state: %v", err)
+	}
+	if runtimeState.Outputs["install-state"] != "fresh" {
+		t.Fatalf("expected install-state output to be fresh, got %q", runtimeState.Outputs["install-state"])
+	}
+	if runtimeState.Outputs["tool-path"] == "" {
+		t.Fatalf("expected node action to persist tool-path output")
+	}
+}
+
+func TestInstallGitHubNodeActionAliasPromotesToBinaryProvider(t *testing.T) {
+	workspace := t.TempDir()
+	home := filepath.Join(workspace, ".tinx-home")
+	repoRoot := filepath.Join(workspace, "gha-repos")
+	ref := createTestGitHubNodeActionRepo(t, repoRoot)
+	t.Setenv("TINX_GHA_REPO_ROOT", repoRoot)
+
+	installBuf := runRootCommand(t, []string{
+		"--tinx-home", home,
+		"install", "node-setup", ref,
+		"--input=tool-name=beta",
+	})
+	if !bytes.Contains(installBuf.Bytes(), []byte("installed gha/node-setup@v1")) {
+		t.Fatalf("unexpected install output: %s", installBuf.String())
+	}
+
+	helpBuf := runAliasCommand(t, home, []string{"node-setup", "help"})
+	if !bytes.Contains(helpBuf.Bytes(), []byte("Configured Inputs:")) || !bytes.Contains(helpBuf.Bytes(), []byte("tool-name")) {
+		t.Fatalf("expected promoted provider help to include configured inputs, got: %s", helpBuf.String())
+	}
+	if bytes.Contains(helpBuf.Bytes(), []byte("Capabilities:")) {
+		t.Fatalf("expected promoted provider help to skip capability listing, got: %s", helpBuf.String())
+	}
+
+	runBuf := runAliasCommand(t, home, []string{"node-setup", "status", "--short"})
+	if !bytes.Contains(runBuf.Bytes(), []byte("node-tool=beta")) || !bytes.Contains(runBuf.Bytes(), []byte("args=status --short")) {
+		t.Fatalf("expected promoted provider to execute local binary, got: %s", runBuf.String())
+	}
+
+	meta, err := state.LoadProviderMetadata(home, "gha", "node-setup")
+	if err != nil {
+		t.Fatalf("load promoted provider metadata: %v", err)
+	}
+	if meta.Runtime != "binary" {
+		t.Fatalf("expected promoted provider runtime to be binary, got %q", meta.Runtime)
+	}
+	if meta.InvocationStyle != state.InvocationStylePassthrough {
+		t.Fatalf("expected promoted provider invocation style to be passthrough, got %q", meta.InvocationStyle)
+	}
+	binaryPath := filepath.Join(home, "providers", "gha", "node-setup", "v1", "bin", goruntime.GOOS, goruntime.GOARCH, meta.Entrypoint)
+	if _, err := os.Stat(binaryPath); err != nil {
+		t.Fatalf("expected promoted provider binary at %s: %v", binaryPath, err)
+	}
+	if _, err := os.Stat(filepath.Join(home, "providers", "gha", "node-setup", "v1", "tinx.yaml")); err != nil {
+		t.Fatalf("expected generated tinx.yaml for promoted provider: %v", err)
+	}
+	aliases, err := state.LoadAliases(home)
+	if err != nil {
+		t.Fatalf("load aliases: %v", err)
+	}
+	if aliases["node-setup"] != "gha/node-setup" {
+		t.Fatalf("expected alias to target installed provider ref, got %q", aliases["node-setup"])
+	}
+}
+
 func runInstallAndRunAssertions(t *testing.T, home, providerDir, layoutPath, ref string) {
 	t.Helper()
 	installArgs := []string{"--tinx-home", home, "install", "echo", "sourceplane/echo-provider", "--source", layoutPath}
@@ -387,6 +565,175 @@ func copyTree(srcDir, dstDir string) error {
 	})
 }
 
+func createTestGitHubActionRepo(t *testing.T, root string) string {
+	t.Helper()
+	repoDir := filepath.Join(root, "acme", "setup-echo")
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	action := strings.Join([]string{
+		"name: Setup Echo",
+		"description: Composite action fixture",
+		"inputs:",
+		"  tool-name:",
+		"    description: Tool name to expose",
+		"    required: true",
+		"outputs:",
+		"  install-state:",
+		"    description: Whether the tool was created or reused",
+		"    value: ${{ steps.install.outputs.install_state }}",
+		"runs:",
+		"  using: composite",
+		"  steps:",
+		"    - id: probe",
+		"      shell: bash",
+		"      run: |",
+		"        if command -v echo-tool >/dev/null 2>&1; then",
+		"          echo \"had_tool=true\" >> \"$GITHUB_OUTPUT\"",
+		"        else",
+		"          echo \"had_tool=false\" >> \"$GITHUB_OUTPUT\"",
+		"        fi",
+		"    - id: install",
+		"      shell: bash",
+		"      run: |",
+		"        tool_dir=\"$TINX_PROVIDER_HOME/tool-cache/${{ inputs.tool-name }}\"",
+		"        install_state=\"cached\"",
+		"        if [ ! -x \"$tool_dir/echo-tool\" ]; then",
+		"          mkdir -p \"$tool_dir\"",
+		"          echo '#!/bin/sh' > \"$tool_dir/echo-tool\"",
+		"          echo 'printf '\\''tool=%s\\n'\\'' \"${TOOL_NAME:-unset}\"' >> \"$tool_dir/echo-tool\"",
+		"          chmod +x \"$tool_dir/echo-tool\"",
+		"          install_state=\"fresh\"",
+		"        fi",
+		"        echo \"$tool_dir\" >> \"$GITHUB_PATH\"",
+		"        echo \"TOOL_NAME=${{ inputs.tool-name }}\" >> \"$GITHUB_ENV\"",
+		"        echo \"install_state=$install_state\" >> \"$GITHUB_OUTPUT\"",
+		"    - shell: bash",
+		"      run: |",
+		"        echo \"had_tool=${{ steps.probe.outputs.had_tool }}\"",
+		"        echo \"install_state=${{ steps.install.outputs.install_state }}\"",
+		"        echo \"tool_name=$TOOL_NAME\"",
+		"        echo \"tinx_path=$(command -v tinx || true)\"",
+		"        echo \"action_path=$GITHUB_ACTION_PATH\"",
+		"        echo \"workspace=$GITHUB_WORKSPACE\"",
+		"        echo \"resolved_tool=$(echo-tool)\"",
+	}, "\n") + "\n"
+	if err := os.WriteFile(filepath.Join(repoDir, "action.yml"), []byte(action), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	repo, err := git.PlainInit(repoDir, false)
+	if err != nil {
+		t.Fatalf("init GitHub Action repo: %v", err)
+	}
+	worktree, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("open GitHub Action worktree: %v", err)
+	}
+	if _, err := worktree.Add("action.yml"); err != nil {
+		t.Fatalf("stage action manifest: %v", err)
+	}
+	hash, err := worktree.Commit("initial action", &git.CommitOptions{
+		Author: &object.Signature{
+			Name:  "tinx test",
+			Email: "tinx@example.com",
+			When:  time.Now(),
+		},
+	})
+	if err != nil {
+		t.Fatalf("commit GitHub Action fixture: %v", err)
+	}
+	if _, err := repo.CreateTag("v1", hash, nil); err != nil {
+		t.Fatalf("tag GitHub Action fixture: %v", err)
+	}
+	return "gha://acme/setup-echo@v1"
+}
+
+func createTestGitHubNodeActionRepo(t *testing.T, root string) string {
+	t.Helper()
+	repoDir := filepath.Join(root, "acme", "setup-node-echo")
+	if err := os.MkdirAll(filepath.Join(repoDir, "dist"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	action := `name: Setup Node Echo
+description: Node action fixture
+inputs:
+  tool-name:
+    description: Tool name to expose
+    required: true
+outputs:
+  install-state:
+    description: Whether the tool was created or reused
+  tool-path:
+    description: Cached tool location
+runs:
+  using: node20
+  main: dist/index.js
+`
+	script := `const fs = require('fs')
+const path = require('path')
+
+const toolName = process.env.INPUT_TOOL_NAME
+const toolCache = process.env.RUNNER_TOOL_CACHE
+const toolDir = path.join(toolCache, toolName)
+const toolPath = path.join(toolDir, 'node-tool')
+const pathEntries = (process.env.PATH || '').split(path.delim).filter(Boolean)
+const hadTool = pathEntries.some((entry) => fs.existsSync(path.join(entry, 'node-tool')))
+let installState = 'cached'
+
+if (!fs.existsSync(toolPath)) {
+  fs.mkdirSync(toolDir, {recursive: true})
+	fs.writeFileSync(toolPath, "#!/bin/sh\nprintf 'node-tool=%s\\n' \"${TOOL_NAME:-unset}\"\nprintf 'args=%s\\n' \"$*\"\n")
+  fs.chmodSync(toolPath, 0o755)
+  installState = 'fresh'
+}
+
+fs.appendFileSync(process.env.GITHUB_PATH, toolDir + '\n')
+fs.appendFileSync(process.env.GITHUB_ENV, 'TOOL_NAME=' + toolName + '\n')
+fs.appendFileSync(process.env.GITHUB_OUTPUT, 'install-state=' + installState + '\n')
+fs.appendFileSync(process.env.GITHUB_OUTPUT, 'tool-path=' + toolPath + '\n')
+
+console.log('had_tool=' + hadTool)
+console.log('install_state=' + installState)
+console.log('tool_name=' + toolName)
+console.log('path=' + process.env.PATH)
+console.log('runner_tool_cache=' + toolCache)
+`
+	if err := os.WriteFile(filepath.Join(repoDir, "action.yml"), []byte(action), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, "dist", "index.js"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	repo, err := git.PlainInit(repoDir, false)
+	if err != nil {
+		t.Fatalf("init GitHub Action repo: %v", err)
+	}
+	worktree, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("open GitHub Action worktree: %v", err)
+	}
+	if _, err := worktree.Add("action.yml"); err != nil {
+		t.Fatalf("stage action manifest: %v", err)
+	}
+	if _, err := worktree.Add("dist/index.js"); err != nil {
+		t.Fatalf("stage node action entrypoint: %v", err)
+	}
+	hash, err := worktree.Commit("initial node action", &git.CommitOptions{
+		Author: &object.Signature{
+			Name:  "tinx test",
+			Email: "tinx@example.com",
+			When:  time.Now(),
+		},
+	})
+	if err != nil {
+		t.Fatalf("commit GitHub Action fixture: %v", err)
+	}
+	if _, err := repo.CreateTag("v1", hash, nil); err != nil {
+		t.Fatalf("tag GitHub Action fixture: %v", err)
+	}
+	return "gha://acme/setup-node-echo@v1"
+}
+
 func runRootCommand(t *testing.T, args []string) *bytes.Buffer {
 	t.Helper()
 	cmd := NewRootCommand()
@@ -396,6 +743,18 @@ func runRootCommand(t *testing.T, args []string) *bytes.Buffer {
 	cmd.SetArgs(args)
 	if err := cmd.ExecuteContext(context.Background()); err != nil {
 		t.Fatalf("command %v failed: %v\n%s", args, err, buf.String())
+	}
+	return buf
+}
+
+func runAliasCommand(t *testing.T, home string, args []string) *bytes.Buffer {
+	t.Helper()
+	cmd := &cobra.Command{}
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	if err := runAlias(cmd, &rootOptions{Home: home}, args); err != nil {
+		t.Fatalf("alias command %v failed: %v\n%s", args, err, buf.String())
 	}
 	return buf
 }
