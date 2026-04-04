@@ -1,0 +1,61 @@
+package workspace
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestLoadSupportsTopLevelWorkspaceShape(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ManifestName)
+	content := []byte("workspace: dev\nproviders:\n  echo: ghcr.io/sourceplane/echo-provider:v0.1.0\n")
+	if err := os.WriteFile(path, content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	config, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if config.Kind != KindWorkspace {
+		t.Fatalf("expected workspace kind, got %q", config.Kind)
+	}
+	if !config.HasProviderAlias("echo") {
+		t.Fatalf("expected echo provider alias to be present")
+	}
+	if got := config.ProviderMap()["echo"].Source; got != "ghcr.io/sourceplane/echo-provider:v0.1.0" {
+		t.Fatalf("unexpected provider source %q", got)
+	}
+}
+
+func TestDiscoverSkipsProviderManifestAndFindsParentWorkspace(t *testing.T) {
+	root := t.TempDir()
+	workspacePath := filepath.Join(root, ManifestName)
+	workspaceContent := []byte("apiVersion: tinx.io/v1\nkind: Workspace\nmetadata:\n  name: dev\nspec:\n  providers:\n    echo: ghcr.io/sourceplane/echo-provider:v0.1.0\n")
+	if err := os.WriteFile(workspacePath, workspaceContent, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	providerDir := filepath.Join(root, "providers", "example")
+	if err := os.MkdirAll(providerDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	providerManifest := []byte("apiVersion: tinx.io/v1\nkind: Provider\nmetadata:\n  namespace: sourceplane\n  name: example\n  version: v0.1.0\nspec:\n  runtime: binary\n  entrypoint: example\n  platforms:\n    - os: darwin\n      arch: arm64\n      binary: bin/darwin/arm64/example\n")
+	if err := os.WriteFile(filepath.Join(providerDir, ManifestName), providerManifest, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	discovery, err := Discover(providerDir)
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if discovery == nil {
+		t.Fatal("expected workspace discovery result")
+	}
+	if discovery.Root != root {
+		t.Fatalf("expected workspace root %q, got %q", root, discovery.Root)
+	}
+	if discovery.DisplayName() != "dev" {
+		t.Fatalf("expected workspace name dev, got %q", discovery.DisplayName())
+	}
+}

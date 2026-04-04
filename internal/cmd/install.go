@@ -10,6 +10,8 @@ import (
 
 	"github.com/sourceplane/tinx/internal/gha"
 	"github.com/sourceplane/tinx/internal/oci"
+	"github.com/sourceplane/tinx/internal/resolver"
+	cmdruntime "github.com/sourceplane/tinx/internal/runtime"
 	"github.com/sourceplane/tinx/internal/state"
 	"github.com/sourceplane/tinx/pkg/version"
 )
@@ -21,10 +23,15 @@ func newInstallCommand(root *rootOptions) *cobra.Command {
 	var inputValues []string
 
 	cmd := &cobra.Command{
-		Use:   "install [alias] <ref>",
+		Use:   "install <ref> [as <alias>] [-- command...]",
 		Short: "Install provider metadata from an OCI layout, registry reference, or GitHub Action",
-		Args:  cobra.RangeArgs(1, 2),
+		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			beforeDash, afterDash := splitArgsAtDash(cmd, args)
+			alias, installTarget, err := parseInstallTarget(filterInstallArgs(beforeDash))
+			if err != nil {
+				return err
+			}
 			home, err := ensureHome(root.Home)
 			if err != nil {
 				return err
@@ -34,21 +41,15 @@ func newInstallCommand(root *rootOptions) *cobra.Command {
 				return err
 			}
 
-			alias := ""
-			installTarget := args[0]
-			if len(args) == 2 {
-				alias = args[0]
-				installTarget = args[1]
-			}
-
+			resolvedTarget := resolver.ResolveProviderSource(installTarget)
 			if source == "" {
 				var installed state.ProviderMetadata
-				if gha.IsReference(installTarget) {
+				if gha.IsReference(resolvedTarget) {
 					if len(installInputs) > 0 && alias == "" {
 						return fmt.Errorf("GitHub Action install-time inputs require an alias so the configured provider can be stored")
 					}
 					if alias != "" {
-						installed, err = gha.InstallAlias(cmd.Context(), home, installTarget, gha.InstallOptions{
+						installed, err = gha.InstallAlias(cmd.Context(), home, resolvedTarget, gha.InstallOptions{
 							Alias:       alias,
 							Inputs:      installInputs,
 							WorkingDir:  mustGetwd(),
@@ -58,19 +59,34 @@ func newInstallCommand(root *rootOptions) *cobra.Command {
 							Stdin:       os.Stdin,
 						}, cmd.ErrOrStderr())
 					} else {
-						installed, err = gha.Install(cmd.Context(), home, installTarget, cmd.ErrOrStderr())
+						installed, err = gha.Install(cmd.Context(), home, resolvedTarget, cmd.ErrOrStderr())
 					}
 				} else {
 					if len(installInputs) > 0 {
 						return fmt.Errorf("--input is only supported for GitHub Action installs")
 					}
-					installed, err = oci.InstallRemote(cmd.Context(), home, installTarget, alias, plainHTTP, cmd.ErrOrStderr())
+					installed, err = oci.InstallRemote(cmd.Context(), home, resolvedTarget, alias, plainHTTP, cmd.ErrOrStderr())
 				}
 				if err != nil {
 					return err
 				}
 				writeLine(cmd.OutOrStdout(), "installed %s/%s@%s", installed.Namespace, installed.Name, installed.Version)
-				return nil
+				if len(afterDash) == 0 {
+					return nil
+				}
+				commandName := alias
+				if commandName == "" {
+					commandName = commandNameForProvider(installed)
+				}
+				return cmdruntime.Dispatch(cmdruntime.DispatchOptions{
+					Home:       home,
+					WorkingDir: mustGetwd(),
+					Commands:   []cmdruntime.ProviderCommand{{Name: commandName, Ref: installed.Namespace + "/" + installed.Name}},
+					Command:    afterDash,
+					Stdout:     cmd.OutOrStdout(),
+					Stderr:     cmd.ErrOrStderr(),
+					Stdin:      os.Stdin,
+				})
 			}
 			if len(installInputs) > 0 {
 				return fmt.Errorf("--input is only supported for GitHub Action installs")
@@ -94,7 +110,22 @@ func newInstallCommand(root *rootOptions) *cobra.Command {
 				return fmt.Errorf("installed provider %s/%s does not match requested ref %s", installed.Namespace, installed.Name, installTarget)
 			}
 			writeLine(cmd.OutOrStdout(), "installed %s/%s@%s", installed.Namespace, installed.Name, installed.Version)
-			return nil
+			if len(afterDash) == 0 {
+				return nil
+			}
+			commandName := alias
+			if commandName == "" {
+				commandName = commandNameForProvider(installed)
+			}
+			return cmdruntime.Dispatch(cmdruntime.DispatchOptions{
+				Home:       home,
+				WorkingDir: mustGetwd(),
+				Commands:   []cmdruntime.ProviderCommand{{Name: commandName, Ref: installed.Namespace + "/" + installed.Name}},
+				Command:    afterDash,
+				Stdout:     cmd.OutOrStdout(),
+				Stderr:     cmd.ErrOrStderr(),
+				Stdin:      os.Stdin,
+			})
 		},
 	}
 	cmd.Flags().StringVar(&source, "source", "", "path to a local OCI image layout")
@@ -102,6 +133,62 @@ func newInstallCommand(root *rootOptions) *cobra.Command {
 	cmd.Flags().BoolVar(&plainHTTP, "plain-http", false, "use plain HTTP for registry pull/install")
 	cmd.Flags().StringArrayVar(&inputValues, "input", nil, "configure a GitHub Action input at install time (name=value)")
 	return cmd
+}
+
+func filterInstallArgs(args []string) []string {
+	filtered := make([]string, 0, len(args))
+	for index := 0; index < len(args); index++ {
+		arg := args[index]
+		switch {
+		case arg == "--source" || arg == "--tag" || arg == "--input":
+			if index+1 < len(args) {
+				index++
+			}
+		case arg == "--plain-http":
+			if index+1 < len(args) {
+				next := strings.ToLower(args[index+1])
+				if next == "true" || next == "false" {
+					index++
+				}
+			}
+		case strings.HasPrefix(arg, "--source=") || strings.HasPrefix(arg, "--tag=") || strings.HasPrefix(arg, "--input=") || strings.HasPrefix(arg, "--plain-http="):
+		default:
+			filtered = append(filtered, arg)
+		}
+	}
+	return filtered
+}
+
+func parseInstallTarget(args []string) (string, string, error) {
+	if len(args) >= 3 && args[1] == "as" {
+		return args[2], args[0], nil
+	}
+	switch len(args) {
+	case 1:
+		return "", args[0], nil
+	case 2:
+		if looksLikeProviderSource(args[1]) && !looksLikeProviderSource(args[0]) {
+			return args[0], args[1], nil
+		}
+	}
+	return "", "", fmt.Errorf("install expects <ref>, <alias> <ref>, or <ref> as <alias>")
+}
+
+func looksLikeProviderSource(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return false
+	}
+	if gha.IsReference(trimmed) || isOCIReference(trimmed) {
+		return true
+	}
+	if resolver.ResolveProviderSource(trimmed) != trimmed {
+		return true
+	}
+	if _, err := os.Stat(trimmed); err == nil {
+		return true
+	}
+	return false
 }
 
 func parseInstallInputs(values []string) (map[string]string, error) {
