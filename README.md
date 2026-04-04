@@ -83,14 +83,83 @@ make install-example
 make run-example
 ```
 
+## Workspaces
+
+Workspaces are the preferred UX for multi-provider flows. A workspace installs providers into a workspace-local `.tinx` home, exposes aliases on `PATH`, and lets providers invoke each other naturally.
+
+Create a workspace from flags:
+
+```bash
+tinx init my-workspace \
+  -p core/node as node \
+  -p sourceplane/lite-ci as lite-ci
+```
+
+Activate it and dispatch a command through the workspace provider set:
+
+```bash
+tinx use my-workspace
+tinx -- lite-ci run plan -- node deploy
+```
+
+You can also activate and run in one step:
+
+```bash
+tinx use my-workspace -- lite-ci run plan -- node deploy
+```
+
+Materialize a workspace from a manifest file:
+
+```bash
+tinx init providers.tx.yaml
+```
+
+Example workspace manifest:
+
+```yaml
+kind: workspace
+workspace: dev
+
+providers:
+  node: core/node
+  lite-ci: sourceplane/lite-ci
+  docker: tinx/docker
+  kubectl: tinx/kubectl
+```
+
+The normalized workspace manifest is written to `tinx.yaml`, provider state is stored under `<workspace>/.tinx`, and the resolved install set is written to `tinx.lock`.
+
+## Single-Provider Dispatch
+
+For single-provider flows, `install` and `run` can expose the provider as an ephemeral command after `--`.
+
+Install with an alias and execute immediately:
+
+```bash
+tinx install sourceplane/lite-ci as lite-ci -- lite-ci run plan
+```
+
+Run directly from a provider reference and execute immediately:
+
+```bash
+tinx run sourceplane/lite-ci -- lite-ci run plan
+```
+
+If you omit `as <alias>`, tinx exposes the provider using its binary entrypoint name.
+
 ## CLI Reference
 
 ```bash
-tinx install [alias] <ref> [--source <oci-layout>] [--tag <tag>] [--plain-http]
+tinx init <workspace-or-config> [-p <provider-source> [as <alias>]]...
+tinx use <workspace> [-- command...]
+tinx install <ref> [as <alias>] [--source <oci-layout>] [--tag <tag>] [--plain-http] [-- command...]
+tinx install <alias> <ref> [--source <oci-layout>] [--tag <tag>] [--plain-http]
 tinx run <provider-or-alias> [capability-or-args...] [--plain-http]
+tinx run <provider-ref> [--plain-http] -- <command...>
 tinx run gha://<owner>/<repo>@<ref> [--input name=value]
 tinx install <alias> gha://<owner>/<repo>@<ref> [--input name=value]
 tinx <alias> [capability-or-args...]
+tinx -- <command...>
 tinx pack [--manifest tinx.yaml] [--artifact-root <dir>] [--output oci] [--tag <tag>]
 tinx release [--manifest tinx.yaml] [--dist dist] [--output oci] [--main <go-main-pkg>] [--push <oci-ref>]
 tinx version
@@ -140,6 +209,7 @@ Current Node runtime behavior:
 ## Configuration
 
 - Default runtime home: `~/.tinx` (or project-provided override)
+- Workspace runtime home: `<workspace>/.tinx`
 - Override runtime home per command:
 
 ```bash

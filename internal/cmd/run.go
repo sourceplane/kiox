@@ -2,11 +2,14 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/sourceplane/tinx/internal/resolver"
+	cmdruntime "github.com/sourceplane/tinx/internal/runtime"
 	"github.com/sourceplane/tinx/internal/state"
 )
 
@@ -21,7 +24,8 @@ func newRunCommand(root *rootOptions) *cobra.Command {
 		},
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			plainHTTP, filteredArgs, err := parseRunArgs(args, plainHTTP)
+			beforeDash, afterDash := splitRunCommandArgs(args, plainHTTP)
+			plainHTTP, filteredArgs, err := parseRunArgs(beforeDash, plainHTTP)
 			if err != nil {
 				return err
 			}
@@ -41,9 +45,28 @@ func newRunCommand(root *rootOptions) *cobra.Command {
 					ref = aliased
 				}
 			}
-			providerMeta, err := resolveProviderForRun(home, ref, plainHTTP, cmd.ErrOrStderr())
+			resolvedRef := ref
+			if aliasName == "" {
+				resolvedRef = resolver.ResolveProviderSource(ref)
+			}
+			providerMeta, err := resolveProviderForRun(home, resolvedRef, plainHTTP, cmd.ErrOrStderr())
 			if err != nil {
 				return err
+			}
+			if len(afterDash) > 0 {
+				commandName := aliasName
+				if commandName == "" {
+					commandName = commandNameForProvider(providerMeta)
+				}
+				return cmdruntime.Dispatch(cmdruntime.DispatchOptions{
+					Home:       home,
+					WorkingDir: mustGetwd(),
+					Commands:   []cmdruntime.ProviderCommand{{Name: commandName, Ref: providerMeta.Namespace + "/" + providerMeta.Name}},
+					Command:    afterDash,
+					Stdout:     cmd.OutOrStdout(),
+					Stderr:     cmd.ErrOrStderr(),
+					Stdin:      os.Stdin,
+				})
 			}
 			helpAlias := aliasName
 			if helpAlias == "" {
@@ -51,20 +74,37 @@ func newRunCommand(root *rootOptions) *cobra.Command {
 			}
 			invocation := planProviderInvocation(providerMeta, filteredArgs[1:])
 			if invocation.showProviderHelp {
-				writeProviderHelp(cmd.OutOrStdout(), helpAlias, ref, providerMeta)
+				writeProviderHelp(cmd.OutOrStdout(), helpAlias, input, providerMeta)
 				return nil
 			}
 			if invocation.showCapabilityHelp {
-				writeCapabilityHelp(cmd.OutOrStdout(), helpAlias, ref, invocation.capability, providerMeta)
+				writeCapabilityHelp(cmd.OutOrStdout(), helpAlias, input, invocation.capability, providerMeta)
 				return nil
 			}
 
-			return executeProviderCapability(cmd, home, ref, providerMeta, invocation.args)
+			return executeProviderCapability(cmd, home, input, providerMeta, invocation.args)
 		},
 	}
 	cmd.Flags().SetInterspersed(false)
 	cmd.Flags().BoolVar(&plainHTTP, "plain-http", false, "use plain HTTP for registry pull/install")
 	return cmd
+}
+
+func splitRunCommandArgs(args []string, plainHTTP bool) ([]string, []string) {
+	for index, arg := range args {
+		if arg != "--" {
+			continue
+		}
+		_, filteredBefore, err := parseRunArgs(args[:index], plainHTTP)
+		if err != nil {
+			return args, nil
+		}
+		if len(filteredBefore) == 1 {
+			return args[:index], args[index+1:]
+		}
+		break
+	}
+	return args, nil
 }
 
 func parseRunArgs(args []string, plainHTTP bool) (bool, []string, error) {

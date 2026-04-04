@@ -736,12 +736,8 @@ console.log('runner_tool_cache=' + toolCache)
 
 func runRootCommand(t *testing.T, args []string) *bytes.Buffer {
 	t.Helper()
-	cmd := NewRootCommand()
 	buf := new(bytes.Buffer)
-	cmd.SetOut(buf)
-	cmd.SetErr(buf)
-	cmd.SetArgs(args)
-	if err := cmd.ExecuteContext(context.Background()); err != nil {
+	if err := executeCLI(context.Background(), args, buf, buf); err != nil {
 		t.Fatalf("command %v failed: %v\n%s", args, err, buf.String())
 	}
 	return buf
@@ -757,4 +753,26 @@ func runAliasCommand(t *testing.T, home string, args []string) *bytes.Buffer {
 		t.Fatalf("alias command %v failed: %v\n%s", args, err, buf.String())
 	}
 	return buf
+}
+
+func TestTinxCLIHelperProcess(t *testing.T) {
+	if os.Getenv("TINX_CLI_HELPER_PROCESS") != "1" {
+		return
+	}
+	separator := -1
+	for index, arg := range os.Args {
+		if arg == "--" {
+			separator = index
+			break
+		}
+	}
+	if separator < 0 || separator+1 >= len(os.Args) {
+		fmt.Fprintln(os.Stderr, "missing helper separator")
+		os.Exit(2)
+	}
+	if err := executeCLI(context.Background(), os.Args[separator+1:], os.Stdout, os.Stderr); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	os.Exit(0)
 }

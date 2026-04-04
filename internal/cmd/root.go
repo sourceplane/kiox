@@ -24,25 +24,7 @@ type rootOptions struct {
 }
 
 func Execute(ctx context.Context) error {
-	root := NewRootCommand()
-	if err := root.ExecuteContext(ctx); err != nil {
-		if !strings.Contains(err.Error(), "unknown command") {
-			return err
-		}
-		home, args, parseErr := extractHomeArg(os.Args[1:])
-		if parseErr != nil {
-			return err
-		}
-		fallback := &cobra.Command{}
-		fallback.SetOut(os.Stdout)
-		fallback.SetErr(os.Stderr)
-		if aliasErr := runAlias(fallback, &rootOptions{Home: home}, args); aliasErr == nil {
-			return nil
-		} else {
-			return aliasErr
-		}
-	}
-	return nil
+	return executeCLI(ctx, os.Args[1:], os.Stdout, os.Stderr)
 }
 
 func NewRootCommand() *cobra.Command {
@@ -65,8 +47,11 @@ func NewRootCommand() *cobra.Command {
 	}
 	cmd.PersistentFlags().StringVar(&opts.Home, "tinx-home", "", "override the tinx home directory")
 	cmd.SetVersionTemplate("tinx {{.Version}}\n")
+	cmd.AddCommand(newInitCommand(opts))
+	cmd.AddCommand(newUseCommand(opts))
 	cmd.AddCommand(newInstallCommand(opts))
 	cmd.AddCommand(newRunCommand(opts))
+	cmd.AddCommand(newDispatchProviderCommand(opts))
 	cmd.AddCommand(newPackCommand())
 	cmd.AddCommand(newReleaseCommand())
 	cmd.AddCommand(newVersionCommand())
@@ -390,17 +375,6 @@ func providerRefFromOCIReference(ref string) (string, bool) {
 
 func providerHomeFromBinary(binaryPath string) string {
 	return filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(binaryPath))))
-}
-
-func ensureHome(override string) (string, error) {
-	home, err := state.ResolveHome(override)
-	if err != nil {
-		return "", err
-	}
-	if err := state.EnsureHome(home); err != nil {
-		return "", err
-	}
-	return home, nil
 }
 
 func resolveInstalledProvider(home, ref string) (state.ProviderMetadata, error) {
