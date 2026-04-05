@@ -36,17 +36,22 @@ func executeCLI(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	root := newRootCommand(&parsedRoot)
 	root.SetOut(stdout)
 	root.SetErr(stderr)
-	root.SetArgs(strippedArgs)
-	if err := root.ExecuteContext(ctx); err != nil {
-		if !strings.Contains(err.Error(), "unknown command") {
-			return err
-		}
-		fallback := &cobra.Command{}
-		fallback.SetOut(stdout)
-		fallback.SetErr(stderr)
-		return runAlias(fallback, &parsedRoot, strippedArgs)
+	if shouldTreatAsRemovedDirectExecution(root, strippedArgs) {
+		return directExecutionRemovedError(strippedArgs)
 	}
-	return nil
+	root.SetArgs(strippedArgs)
+	return root.ExecuteContext(ctx)
+}
+
+func shouldTreatAsRemovedDirectExecution(root *cobra.Command, args []string) bool {
+	if len(args) == 0 {
+		return false
+	}
+	if strings.HasPrefix(args[0], "-") {
+		return false
+	}
+	_, _, err := root.Find(args)
+	return err != nil
 }
 
 func ensureGlobalHome(override string) (string, error) {
@@ -244,41 +249,6 @@ func workspaceWorkingDir(root string) string {
 		return workingDir
 	}
 	return root
-}
-
-func workspaceRootForHome(home string) string {
-	discovery, err := workspace.Discover(mustGetwd())
-	if err != nil || discovery == nil {
-		return ""
-	}
-	if filepath.Clean(workspace.Home(discovery.Root)) != filepath.Clean(home) {
-		return ""
-	}
-	return discovery.Root
-}
-
-func providerCommandsFromAliases(aliases map[string]string) []cmdruntime.ProviderCommand {
-	names := make([]string, 0, len(aliases))
-	for name := range aliases {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	commands := make([]cmdruntime.ProviderCommand, 0, len(names))
-	for _, name := range names {
-		commands = append(commands, cmdruntime.ProviderCommand{Name: name, Ref: aliases[name]})
-	}
-	return commands
-}
-
-func commandNameForProvider(meta state.ProviderMetadata) string {
-	entrypoint := strings.TrimSpace(filepath.Base(meta.Entrypoint))
-	if entrypoint != "" && entrypoint != "." && !looksLikeManifestOrScript(entrypoint) {
-		return entrypoint
-	}
-	if meta.Name != "" {
-		return meta.Name
-	}
-	return entrypoint
 }
 
 func looksLikeManifestOrScript(name string) bool {

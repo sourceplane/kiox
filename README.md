@@ -25,7 +25,6 @@ workspace-local shell environment and invoked like normal commands.
 - `tinx add` mutates a workspace manifest and syncs providers into `.workspace/`
 - `tinx --` rebuilds a workspace shell environment and runs any command, or launches an interactive shell
 - `tinx install` installs provider metadata from registry or local OCI layout
-- `tinx run` resolves alias/provider and executes a capability
 - `tinx pack` packages a provider into an OCI image layout
 - `tinx release` builds, packages, and optionally pushes artifacts
 
@@ -173,23 +172,23 @@ spec:
 
 Supported interpolation keys include `${provider_ref}`, `${provider_home}`, `${provider_assets}`, `${provider_binary}`, `${workspace_root}`, and `${cwd}`.
 
-## Single-Provider Dispatch
+## Standalone Install
 
-For single-provider flows, `install` and `run` can expose the provider as an ephemeral command after `--`.
+`install` remains a low-level metadata and cache command. It does not execute providers.
 
-Install with an alias and execute immediately:
-
-```bash
-tinx install sourceplane/lite-ci as lite-ci -- lite-ci run plan
-```
-
-Run directly from a provider reference and execute immediately:
+Install a provider into the default tinx home:
 
 ```bash
-tinx run sourceplane/lite-ci -- lite-ci run plan
+tinx install sourceplane/lite-ci as lite-ci
 ```
 
-If you omit `as <alias>`, tinx still installs the provider metadata into the default home. Use `tinx run <provider-ref> <capability>` for later invocation, or use `-- <entrypoint> ...` for one-shot dispatch.
+Execution still happens through a workspace shell:
+
+```bash
+tinx workspace activate my-workspace
+tinx add sourceplane/lite-ci as lite-ci
+tinx -- lite-ci plan
+```
 
 ## CLI Reference
 
@@ -201,11 +200,8 @@ tinx list workspaces
 tinx list providers [workspace|default]
 tinx [--workspace <workspace>] -- <command...>
 tinx [--workspace <workspace>] --
-tinx install <ref> [as <alias>] [--source <oci-layout>] [--tag <tag>] [--plain-http] [-- command...]
+tinx install <ref> [as <alias>] [--source <oci-layout>] [--tag <tag>] [--plain-http]
 tinx install <alias> <ref> [--source <oci-layout>] [--tag <tag>] [--plain-http]
-tinx run <provider-or-alias> [capability-or-args...] [--plain-http]
-tinx run <provider-ref> [--plain-http] -- <command...>
-tinx <alias> [capability-or-args...]
 tinx -- <command...>
 tinx pack [--manifest tinx.yaml] [--artifact-root <dir>] [--output oci] [--tag <tag>]
 tinx release [--manifest tinx.yaml] [--dist dist] [--output oci] [--main <go-main-pkg>] [--push <oci-ref>]
@@ -219,7 +215,7 @@ tinx version
 - Override runtime home per command:
 
 ```bash
-tinx --tinx-home /custom/path run <provider> <capability>
+tinx --tinx-home /custom/path --workspace my-workspace -- node build
 ```
 
 ## Security

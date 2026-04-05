@@ -386,11 +386,11 @@ func providerInvokeHint(meta state.ProviderMetadata, aliases []string, workspace
 	if workspaceScope {
 		return "tinx -- " + target + " ..."
 	}
-	prefix := "tinx "
+	addTarget := providerAddTarget(meta)
 	if len(aliases) == 0 {
-		prefix = "tinx run "
+		return "tinx add " + addTarget
 	}
-	return prefix + target + " <capability>"
+	return "tinx add " + addTarget + " as " + aliases[0]
 }
 
 func missingProviderInvokeHint(ref string, aliases []string, workspaceScope bool) string {
@@ -401,9 +401,16 @@ func missingProviderInvokeHint(ref string, aliases []string, workspaceScope bool
 		return "tinx -- " + ref + " ..."
 	}
 	if len(aliases) > 0 {
-		return "tinx " + aliases[0] + " ..."
+		return "tinx add " + ref + " as " + aliases[0]
 	}
-	return "tinx run " + ref + " ..."
+	return "tinx add " + ref
+}
+
+func providerAddTarget(meta state.ProviderMetadata) string {
+	if ref := strings.TrimSpace(meta.Source.Ref); ref != "" {
+		return ref
+	}
+	return providerReference(meta)
 }
 
 func displayEntrypoint(meta state.ProviderMetadata) string {

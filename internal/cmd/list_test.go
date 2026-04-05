@@ -106,7 +106,7 @@ func TestListProvidersSupportsWorkspaceAndDefaultScopes(t *testing.T) {
 		"Scope: default",
 		"Type: default",
 		"sourceplane/echo-provider",
-		"tinx run sourceplane/echo-provider <capability>",
+		"tinx add sourceplane/echo-provider",
 	} {
 		if !strings.Contains(defaultOutput, expected) {
 			t.Fatalf("expected %q in default provider output, got:\n%s", expected, defaultOutput)

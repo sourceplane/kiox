@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net/http/httptest"
 	"os"
@@ -138,7 +139,7 @@ func TestInteractiveWorkspaceShellUsesWorkspaceEnvironment(t *testing.T) {
 	}
 }
 
-func TestInstallRefAsAliasDispatchesProviderCommand(t *testing.T) {
+func TestInstallRejectsExecutionAfterDash(t *testing.T) {
 	tempDir := t.TempDir()
 	home := filepath.Join(tempDir, ".tinx-home")
 	providerProject := createLiteCIProviderProject(t, filepath.Join(tempDir, "lite-ci-provider"))
@@ -148,16 +149,17 @@ func TestInstallRefAsAliasDispatchesProviderCommand(t *testing.T) {
 	ref := registryHost + "/acme/lite-ci:v0.1.0"
 	releaseProviderRef(t, home, providerProject, ref)
 
-	runBuf := runRootCommand(t, []string{"--tinx-home", home, "install", ref, "as", "lite-ci", "--plain-http", "--", "lite-ci", "run", "plan"})
-	if !bytes.Contains(runBuf.Bytes(), []byte("installed acme/lite-ci@v0.1.0")) {
-		t.Fatalf("unexpected install output: %s", runBuf.String())
+	buf := new(bytes.Buffer)
+	err := executeCLI(context.Background(), []string{"--tinx-home", home, "install", ref, "as", "lite-ci", "--plain-http", "--", "lite-ci", "plan"}, buf, buf)
+	if err == nil {
+		t.Fatal("expected install to reject standalone execution")
 	}
-	if !bytes.Contains(runBuf.Bytes(), []byte("lite-ci-args=run plan")) {
-		t.Fatalf("expected dispatched provider execution, got: %s", runBuf.String())
+	if !strings.Contains(err.Error(), "install no longer executes commands") {
+		t.Fatalf("unexpected install error: %v", err)
 	}
 }
 
-func TestRunRefDispatchesUsingBinaryName(t *testing.T) {
+func TestRunCommandExplainsWorkspaceMigration(t *testing.T) {
 	tempDir := t.TempDir()
 	home := filepath.Join(tempDir, ".tinx-home")
 	providerProject := createLiteCIProviderProject(t, filepath.Join(tempDir, "lite-ci-provider"))
@@ -167,9 +169,13 @@ func TestRunRefDispatchesUsingBinaryName(t *testing.T) {
 	ref := registryHost + "/acme/lite-ci:v0.1.0"
 	releaseProviderRef(t, home, providerProject, ref)
 
-	runBuf := runRootCommand(t, []string{"--tinx-home", home, "run", ref, "--plain-http", "--", "lite-ci", "run", "plan"})
-	if !bytes.Contains(runBuf.Bytes(), []byte("lite-ci-args=run plan")) {
-		t.Fatalf("expected dispatched provider execution, got: %s", runBuf.String())
+	buf := new(bytes.Buffer)
+	err := executeCLI(context.Background(), []string{"--tinx-home", home, "run", ref, "plan", "--plain-http"}, buf, buf)
+	if err == nil {
+		t.Fatal("expected run to be rejected")
+	}
+	if !strings.Contains(err.Error(), "'tinx run' has been removed") {
+		t.Fatalf("unexpected run error: %v", err)
 	}
 }
 
@@ -280,11 +286,6 @@ func createCapabilityProviderProject(t *testing.T, dir, namespace, name, capabil
 	return dir
 }
 
-func manifestEnvName(name string) string {
-	upper := strings.ToUpper(strings.ReplaceAll(name, "-", "_"))
-	return upper + "_PROVIDER_REF"
-}
-
 func releaseProviderLayout(t *testing.T, home, providerDir string) string {
 	t.Helper()
 	layoutPath := filepath.Join(providerDir, "oci")
@@ -315,4 +316,9 @@ func releaseProviderRef(t *testing.T, home, providerDir, ref string) {
 	if !bytes.Contains(buf.Bytes(), []byte("pushed "+ref)) {
 		t.Fatalf("unexpected release output: %s", buf.String())
 	}
+}
+
+func manifestEnvName(name string) string {
+	upper := strings.ToUpper(strings.ReplaceAll(name, "-", "_"))
+	return upper + "_PROVIDER_REF"
 }

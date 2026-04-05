@@ -84,3 +84,24 @@ func interactiveShellArgs(shellPath string) []string {
 		return nil
 	}
 }
+
+func resolveCommandPath(command, pathEnv string) (string, error) {
+	if strings.ContainsRune(command, os.PathSeparator) {
+		return command, nil
+	}
+	for _, dir := range filepath.SplitList(pathEnv) {
+		if dir == "" {
+			continue
+		}
+		candidate := filepath.Join(dir, command)
+		info, err := os.Stat(candidate)
+		if err != nil {
+			continue
+		}
+		if info.IsDir() || info.Mode()&0o111 == 0 {
+			continue
+		}
+		return candidate, nil
+	}
+	return "", fmt.Errorf("run command: exec: %q: executable file not found in $PATH", command)
+}
