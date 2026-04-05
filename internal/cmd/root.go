@@ -36,20 +36,18 @@ func newRootCommand(opts *rootOptions) *cobra.Command {
 		},
 		Version: version.String(),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) == 0 {
-				return cmd.Help()
-			}
-			return directExecutionRemovedError(args)
+			return cmd.Help()
 		},
 	}
 	cmd.PersistentFlags().StringVar(&opts.Home, "tinx-home", opts.Home, "override the tinx home directory")
 	cmd.PersistentFlags().StringVarP(&opts.Workspace, "workspace", "w", opts.Workspace, "select the workspace for workspace-shell commands")
 	cmd.SetVersionTemplate("tinx {{.Version}}\n")
 	cmd.AddCommand(newInitCommand(opts))
+	cmd.AddCommand(newStatusCommand(opts))
 	cmd.AddCommand(newWorkspaceCommand(opts))
+	cmd.AddCommand(newProviderCommand(opts))
 	cmd.AddCommand(newAddCommand(opts))
 	cmd.AddCommand(newUseCommand(opts))
-	cmd.AddCommand(newListCommand(opts))
 	cmd.AddCommand(newInstallCommand(opts))
 	cmd.AddCommand(newRunCommand(opts))
 	cmd.AddCommand(newPackCommand())
@@ -81,14 +79,6 @@ func mustGetwd() string {
 
 func writeLine(w io.Writer, format string, args ...any) {
 	fmt.Fprintf(w, format+"\n", args...)
-}
-
-func directExecutionRemovedError(args []string) error {
-	command := strings.Join(args, " ")
-	if strings.TrimSpace(command) == "" {
-		command = "<command>"
-	}
-	return fmt.Errorf("direct provider execution has been removed; activate a workspace and run 'tinx -- %s' instead", command)
 }
 
 func extractRootArgs(args []string) (rootOptions, []string, error) {

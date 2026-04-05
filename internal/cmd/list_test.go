@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/sourceplane/tinx/internal/state"
 )
 
 func TestListWorkspacesShowsCompactWorkspaceScopes(t *testing.T) {
@@ -31,17 +33,29 @@ func TestListWorkspacesShowsCompactWorkspaceScopes(t *testing.T) {
 		"install", "sourceplane/echo-provider",
 		"--source", standaloneLayout,
 	})
+	missingRoot := filepath.Join(tempDir, "missing-workspace")
+	if err := state.RememberWorkspace(globalHome, "missing-workspace", missingRoot); err != nil {
+		t.Fatalf("remember missing workspace: %v", err)
+	}
 
-	listBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "list", "workspaces"})
+	listBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "ws", "list"})
 	output := listBuf.String()
 	for _, expected := range []string{
 		"NAME",
-		"TYPE",
-		"STATUS",
 		"ACTIVE",
+		"STATUS",
 		"ROOT",
+		"*",
+		"✓ ready",
+		"✗ missing",
 		"my-workspace",
+		displayInventoryPath(workspaceRoot),
+		"missing-workspace",
+		compactAbsolutePath(missingRoot),
 		"default",
+		"(global)",
+		"3 workspaces",
+		"Active workspace: my-workspace",
 	} {
 		if !strings.Contains(output, expected) {
 			t.Fatalf("expected %q in list output, got:\n%s", expected, output)
@@ -52,12 +66,40 @@ func TestListWorkspacesShowsCompactWorkspaceScopes(t *testing.T) {
 		"Providers in default:",
 		"acme/lite-ci",
 		"sourceplane/echo-provider",
-		"tinx lite-ci",
-		"tinx run sourceplane/echo-provider",
+		"TYPE",
 	} {
 		if strings.Contains(output, unexpected) {
 			t.Fatalf("did not expect %q in compact workspace output, got:\n%s", unexpected, output)
 		}
+	}
+
+	shortBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "ws", "list", "--short"})
+	shortOutput := shortBuf.String()
+	for _, expected := range []string{"* my-workspace", "  default"} {
+		if !strings.Contains(shortOutput, expected) {
+			t.Fatalf("expected %q in short workspace output, got:\n%s", expected, shortOutput)
+		}
+	}
+	if strings.Contains(shortOutput, "ROOT") {
+		t.Fatalf("did not expect table header in short workspace output, got:\n%s", shortOutput)
+	}
+
+	readyBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "ws", "list", "--ready"})
+	readyOutput := readyBuf.String()
+	if strings.Contains(readyOutput, "missing-workspace") {
+		t.Fatalf("did not expect missing workspace in ready output, got:\n%s", readyOutput)
+	}
+
+	missingBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "ws", "list", "--missing"})
+	missingOutput := missingBuf.String()
+	if !strings.Contains(missingOutput, "missing-workspace") || !strings.Contains(missingOutput, "1 workspace (1 missing)") {
+		t.Fatalf("unexpected missing workspace output:\n%s", missingOutput)
+	}
+
+	activeBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "ws", "list", "--active"})
+	activeOutput := activeBuf.String()
+	if !strings.Contains(activeOutput, "my-workspace") || strings.Contains(activeOutput, "missing-workspace") {
+		t.Fatalf("unexpected active workspace output:\n%s", activeOutput)
 	}
 }
 
@@ -83,14 +125,19 @@ func TestListProvidersSupportsWorkspaceAndDefaultScopes(t *testing.T) {
 		"--source", standaloneLayout,
 	})
 
-	workspaceBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "list", "providers", "team-workspace"})
+	workspaceBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "p", "list", "team-workspace"})
 	workspaceOutput := workspaceBuf.String()
 	for _, expected := range []string{
 		"Scope: team-workspace",
-		"Type: workspace",
+		"Root: " + displayInventoryPath(workspaceRoot),
+		"Status: ✓ ready",
+		"NAME",
+		"STATUS",
+		"PROVIDER",
+		"VERSION",
 		"lite-ci",
 		"acme/lite-ci",
-		"tinx -- lite-ci ...",
+		"1 provider (1 ready)",
 	} {
 		if !strings.Contains(workspaceOutput, expected) {
 			t.Fatalf("expected %q in workspace provider output, got:\n%s", expected, workspaceOutput)
@@ -100,13 +147,14 @@ func TestListProvidersSupportsWorkspaceAndDefaultScopes(t *testing.T) {
 		t.Fatalf("workspace provider output should not include default-home installs:\n%s", workspaceOutput)
 	}
 
-	defaultBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "list", "providers", "default"})
+	defaultBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "p", "list", "default"})
 	defaultOutput := defaultBuf.String()
 	for _, expected := range []string{
 		"Scope: default",
-		"Type: default",
+		"Root: (global)",
+		"Status: ✓ ready",
 		"sourceplane/echo-provider",
-		"tinx add sourceplane/echo-provider",
+		"1 provider (1 ready)",
 	} {
 		if !strings.Contains(defaultOutput, expected) {
 			t.Fatalf("expected %q in default provider output, got:\n%s", expected, defaultOutput)

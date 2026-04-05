@@ -17,7 +17,7 @@ import (
 	workspacepkg "github.com/sourceplane/tinx/internal/workspace"
 )
 
-func TestInitWorkspaceFromFlagsAndDispatchWithActiveWorkspace(t *testing.T) {
+func TestInitWorkspaceFromFlagsAutoSelectsWorkspaceAndDispatches(t *testing.T) {
 	tempDir := t.TempDir()
 	globalHome := filepath.Join(tempDir, ".tinx-global")
 	liteCIProject := createLiteCIProviderProject(t, filepath.Join(tempDir, "lite-ci-provider"))
@@ -30,16 +30,14 @@ func TestInitWorkspaceFromFlagsAndDispatchWithActiveWorkspace(t *testing.T) {
 	if !bytes.Contains(initBuf.Bytes(), []byte("initialized workspace my-workspace")) {
 		t.Fatalf("unexpected init output: %s", initBuf.String())
 	}
+	if !bytes.Contains(initBuf.Bytes(), []byte("active workspace: my-workspace")) {
+		t.Fatalf("expected init to select the workspace, got: %s", initBuf.String())
+	}
 	if _, err := os.Stat(filepath.Join(workspaceRoot, "tinx.yaml")); err != nil {
 		t.Fatalf("expected workspace manifest: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(workspaceRoot, "tinx.lock")); err != nil {
 		t.Fatalf("expected workspace lock file: %v", err)
-	}
-
-	activateBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "workspace", "activate", workspaceRoot})
-	if !bytes.Contains(activateBuf.Bytes(), []byte("active workspace: my-workspace")) {
-		t.Fatalf("unexpected activate output: %s", activateBuf.String())
 	}
 
 	runRootCommand(t, []string{"--tinx-home", globalHome, "add", liteCILayout, "as", "lite-ci"})
@@ -63,6 +61,29 @@ func TestInitWorkspaceFromFlagsAndDispatchWithActiveWorkspace(t *testing.T) {
 	}
 	if activeWorkspace != workspaceRoot {
 		t.Fatalf("expected active workspace %q, got %q", workspaceRoot, activeWorkspace)
+	}
+}
+
+func TestInitDefaultsToCurrentDirectory(t *testing.T) {
+	tempDir := t.TempDir()
+	globalHome := filepath.Join(tempDir, ".tinx-global")
+	projectRoot := filepath.Join(tempDir, "project")
+	if err := os.MkdirAll(projectRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(projectRoot)
+
+	initBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "init"})
+	workspaceName := filepath.Base(projectRoot)
+	if !bytes.Contains(initBuf.Bytes(), []byte("initialized workspace "+workspaceName)) {
+		t.Fatalf("unexpected init output: %s", initBuf.String())
+	}
+	if _, err := os.Stat(filepath.Join(projectRoot, "tinx.yaml")); err != nil {
+		t.Fatalf("expected workspace manifest: %v", err)
+	}
+	currentBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "ws", "current"})
+	if !bytes.Contains(currentBuf.Bytes(), []byte("workspace: "+workspaceName)) {
+		t.Fatalf("unexpected current workspace output: %s", currentBuf.String())
 	}
 }
 
@@ -93,6 +114,9 @@ providers:
 	if !bytes.Contains(initBuf.Bytes(), []byte("initialized workspace dev")) {
 		t.Fatalf("unexpected init output: %s", initBuf.String())
 	}
+	if !bytes.Contains(initBuf.Bytes(), []byte("active workspace: dev")) {
+		t.Fatalf("expected init to select the workspace, got: %s", initBuf.String())
+	}
 	materializedManifest := filepath.Join(workspaceRoot, "tinx.yaml")
 	if _, err := os.Stat(materializedManifest); err != nil {
 		t.Fatalf("expected materialized workspace manifest: %v", err)
@@ -103,6 +127,13 @@ providers:
 	}
 	if !loadedConfig.HasProviderAlias("lite-ci") || !loadedConfig.HasProviderAlias("node") {
 		t.Fatalf("expected materialized manifest aliases, got %#v", loadedConfig.ProviderAliases())
+	}
+	activeWorkspace, err := state.LoadActiveWorkspace(globalHome)
+	if err != nil {
+		t.Fatalf("load active workspace: %v", err)
+	}
+	if activeWorkspace != workspaceRoot {
+		t.Fatalf("expected active workspace %q, got %q", workspaceRoot, activeWorkspace)
 	}
 
 	runBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "--workspace", workspaceRoot, "--", "lite-ci", "plan", "--", "node", "build"})
@@ -117,7 +148,7 @@ func TestInteractiveWorkspaceShellUsesWorkspaceEnvironment(t *testing.T) {
 	workspaceRoot := filepath.Join(tempDir, "interactive-workspace")
 
 	runRootCommand(t, []string{"--tinx-home", globalHome, "init", workspaceRoot})
-	runRootCommand(t, []string{"--tinx-home", globalHome, "workspace", "activate", workspaceRoot})
+	runRootCommand(t, []string{"--tinx-home", globalHome, "workspace", "use", workspaceRoot})
 	runRootCommand(t, []string{"--tinx-home", globalHome, "add", liteCILayout, "as", "lite-ci"})
 
 	fakeShell := filepath.Join(tempDir, "fake-shell")
@@ -136,6 +167,111 @@ func TestInteractiveWorkspaceShellUsesWorkspaceEnvironment(t *testing.T) {
 	}
 	if !bytes.Contains(shellBuf.Bytes(), []byte(filepath.Join(workspaceRoot, ".workspace", "bin"))) {
 		t.Fatalf("expected interactive shell path to include workspace shims, got: %s", shellBuf.String())
+	}
+}
+
+func TestProviderCommandAliasesAndStatus(t *testing.T) {
+	tempDir := t.TempDir()
+	globalHome := filepath.Join(tempDir, ".tinx-global")
+	liteCIProject := createLiteCIProviderProject(t, filepath.Join(tempDir, "lite-ci-provider"))
+	liteCILayout := releaseProviderLayout(t, globalHome, liteCIProject)
+	workspaceRoot := filepath.Join(tempDir, "dev")
+
+	runRootCommand(t, []string{"--tinx-home", globalHome, "init", workspaceRoot})
+	runRootCommand(t, []string{"--tinx-home", globalHome, "p", "add", liteCILayout, "as", "lite-ci"})
+
+	statusBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "status"})
+	for _, expected := range []string{
+		"tinx workspace: dev",
+		"path: " + displayRelativePath(workspaceRoot),
+		"shims: active",
+		"providers:",
+		"lite-ci",
+		"acme/lite-ci",
+		"v0.1.0",
+	} {
+		if !strings.Contains(statusBuf.String(), expected) {
+			t.Fatalf("expected %q in status output, got:\n%s", expected, statusBuf.String())
+		}
+	}
+	statusShortBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "status", "--short"})
+	if !strings.Contains(statusShortBuf.String(), "dev | 1 providers | shims active") {
+		t.Fatalf("unexpected short status output: %s", statusShortBuf.String())
+	}
+	statusVerboseBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "status", "--verbose"})
+	for _, expected := range []string{
+		"details:",
+		"env file: " + displayRelativePath(filepath.Join(workspaceRoot, ".workspace", "env")),
+		"path file: " + displayRelativePath(filepath.Join(workspaceRoot, ".workspace", "path")),
+	} {
+		if !strings.Contains(statusVerboseBuf.String(), expected) {
+			t.Fatalf("expected %q in verbose status output, got:\n%s", expected, statusVerboseBuf.String())
+		}
+	}
+	providersListBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "providers", "list"})
+	if !strings.Contains(providersListBuf.String(), "acme/lite-ci") {
+		t.Fatalf("expected providers alias to work, got:\n%s", providersListBuf.String())
+	}
+
+	updateBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "p", "update", "lite-ci"})
+	if !strings.Contains(updateBuf.String(), "updated providers: lite-ci") {
+		t.Fatalf("unexpected provider update output: %s", updateBuf.String())
+	}
+
+	removeBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "p", "remove", "lite-ci"})
+	if !strings.Contains(removeBuf.String(), "removed provider lite-ci") {
+		t.Fatalf("unexpected provider remove output: %s", removeBuf.String())
+	}
+	config, err := workspacepkg.Load(filepath.Join(workspaceRoot, "tinx.yaml"))
+	if err != nil {
+		t.Fatalf("load workspace after provider remove: %v", err)
+	}
+	if config.HasProviderAlias("lite-ci") {
+		t.Fatalf("expected provider alias to be removed from workspace manifest")
+	}
+	listBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "p", "list"})
+	if !strings.Contains(listBuf.String(), "no providers installed") {
+		t.Fatalf("expected provider list to be empty after removal, got:\n%s", listBuf.String())
+	}
+}
+
+func TestWorkspaceCreateListCurrentAndDelete(t *testing.T) {
+	tempDir := t.TempDir()
+	globalHome := filepath.Join(tempDir, ".tinx-global")
+	workspaceRoot := filepath.Join(tempDir, "team")
+
+	createBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "ws", "create", workspaceRoot})
+	if !strings.Contains(createBuf.String(), "initialized workspace team") {
+		t.Fatalf("unexpected workspace create output: %s", createBuf.String())
+	}
+	listBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "ws", "list"})
+	if !strings.Contains(listBuf.String(), "team") {
+		t.Fatalf("expected workspace list to include team, got:\n%s", listBuf.String())
+	}
+	workspacesBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "workspaces", "list"})
+	if !strings.Contains(workspacesBuf.String(), "team") {
+		t.Fatalf("expected plural workspace alias to include team, got:\n%s", workspacesBuf.String())
+	}
+	currentBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "ws", "current"})
+	if !strings.Contains(currentBuf.String(), "workspace: team") {
+		t.Fatalf("unexpected workspace current output: %s", currentBuf.String())
+	}
+	deleteBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "ws", "delete", workspaceRoot})
+	if !strings.Contains(deleteBuf.String(), "deleted workspace team") {
+		t.Fatalf("unexpected workspace delete output: %s", deleteBuf.String())
+	}
+	for _, path := range []string{
+		filepath.Join(workspaceRoot, "tinx.yaml"),
+		filepath.Join(workspaceRoot, "tinx.lock"),
+		filepath.Join(workspaceRoot, ".workspace"),
+	} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("expected workspace artifact %s to be removed", path)
+		}
+	}
+	postDeleteCurrentBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "ws", "current"})
+	if !strings.Contains(postDeleteCurrentBuf.String(), "workspace: none") {
+		t.Fatalf("expected no active workspace after delete, got: %s", postDeleteCurrentBuf.String())
 	}
 }
 

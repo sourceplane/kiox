@@ -1,0 +1,3 @@
+apiVersion: tinx.io/v1
+kind: WorkspaceLock
+workspace: my-workspace

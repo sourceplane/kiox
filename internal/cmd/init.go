@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/sourceplane/tinx/internal/state"
 	"github.com/sourceplane/tinx/internal/workspace"
 )
 
@@ -28,46 +29,54 @@ func newInitCommand(root *rootOptions) *cobra.Command {
 		Short:              "Create or materialize a provider workspace",
 		DisableFlagParsing: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			input, err := parseInitCommandArgs(args)
-			if err != nil {
-				return err
-			}
-			if input.ShowHelp {
-				return cmd.Help()
-			}
-			target, err := buildInitWorkspaceTarget(input)
-			if err != nil {
-				return err
-			}
-			if err := workspace.Save(workspace.ManifestPath(target.Root), target.Config); err != nil {
-				return err
-			}
-			result, err := workspace.Sync(cmd.Context(), target.Root, target.Config, workspace.SyncOptions{
-				Out: cmd.ErrOrStderr(),
-			})
-			if err != nil {
-				return err
-			}
-			globalHome, err := ensureGlobalHome(root.Home)
-			if err != nil {
-				return err
-			}
-			if err := rememberWorkspaceTarget(globalHome, target); err != nil {
-				return err
-			}
-			writeLine(cmd.OutOrStdout(), "initialized workspace %s", target.Config.Name())
-			writeLine(cmd.OutOrStdout(), "manifest: %s", workspace.ManifestPath(target.Root))
-			writeLine(cmd.OutOrStdout(), "home: %s", result.Home)
-			return nil
+			return runInitCommand(cmd, root, args, ".")
 		},
 	}
 	return cmd
 }
 
-func parseInitCommandArgs(args []string) (initCommandInput, error) {
+func runInitCommand(cmd *cobra.Command, root *rootOptions, args []string, defaultTarget string) error {
+	input, err := parseInitCommandArgs(args, defaultTarget)
+	if err != nil {
+		return err
+	}
+	if input.ShowHelp {
+		return cmd.Help()
+	}
+	target, err := buildInitWorkspaceTarget(input)
+	if err != nil {
+		return err
+	}
+	if err := workspace.Save(workspace.ManifestPath(target.Root), target.Config); err != nil {
+		return err
+	}
+	result, err := workspace.Sync(cmd.Context(), target.Root, target.Config, workspace.SyncOptions{
+		Out: cmd.ErrOrStderr(),
+	})
+	if err != nil {
+		return err
+	}
+	globalHome, err := ensureGlobalHome(root.Home)
+	if err != nil {
+		return err
+	}
+	if err := rememberWorkspaceTarget(globalHome, target); err != nil {
+		return err
+	}
+	if err := state.SaveActiveWorkspace(globalHome, target.Root); err != nil {
+		return err
+	}
+	writeLine(cmd.OutOrStdout(), "initialized workspace %s", target.Config.Name())
+	writeLine(cmd.OutOrStdout(), "active workspace: %s", target.Config.Name())
+	writeLine(cmd.OutOrStdout(), "manifest: %s", workspace.ManifestPath(target.Root))
+	writeLine(cmd.OutOrStdout(), "home: %s", result.Home)
+	return nil
+}
+
+func parseInitCommandArgs(args []string, defaultTarget string) (initCommandInput, error) {
 	input := initCommandInput{}
 	if len(args) == 0 {
-		input.ShowHelp = true
+		input.Target = defaultTarget
 		return input, nil
 	}
 	for _, arg := range args {

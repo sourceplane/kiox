@@ -21,8 +21,10 @@ workspace-local shell environment and invoked like normal commands.
 
 ## Architecture Highlights
 
-- `tinx workspace activate` selects the current workspace scope
-- `tinx add` mutates a workspace manifest and syncs providers into `.workspace/`
+- `tinx init` creates a workspace in the current or target directory and selects it immediately
+- `tinx use` or `tinx workspace use` selects the current workspace scope
+- `tinx provider add` mutates a workspace manifest and syncs providers into `.workspace/`
+- `tinx status` shows the current workspace, providers, shims, and generated environment artifacts
 - `tinx --` rebuilds a workspace shell environment and runs any command, or launches an interactive shell
 - `tinx install` installs provider metadata from registry or local OCI layout
 - `tinx pack` packages a provider into an OCI image layout
@@ -88,23 +90,37 @@ make run-example
 
 Workspaces are the preferred UX for multi-provider flows. A workspace installs providers into a workspace-local `.workspace` runtime, writes shell artifacts on each `tinx -- ...` invocation, exposes provider shims on `PATH`, and lets providers invoke each other naturally.
 
-Create an empty workspace:
+Create a workspace in the current directory and switch tinx to it immediately:
+
+```bash
+tinx init
+```
+
+Create a named workspace elsewhere:
 
 ```bash
 tinx init my-workspace
 ```
 
-Activate it:
+Switch to a workspace later:
 
 ```bash
-tinx workspace activate my-workspace
+tinx use my-workspace
 ```
 
 Add providers to the active workspace:
 
 ```bash
-tinx add core/node as node
-tinx add sourceplane/lite-ci as lite-ci
+tinx provider add core/node as node
+tinx provider add sourceplane/lite-ci as lite-ci
+```
+
+Short aliases are available for a shorter flow:
+
+```bash
+tinx ws use my-workspace
+tinx p add core/node as node
+tinx p add sourceplane/lite-ci as lite-ci
 ```
 
 Run any shell command through the workspace environment:
@@ -121,7 +137,7 @@ Launch an interactive shell with the workspace environment loaded:
 tinx --
 ```
 
-Target a workspace explicitly without activating it globally:
+Target a workspace explicitly without selecting it globally:
 
 ```bash
 tinx --workspace my-workspace -- node build
@@ -152,12 +168,73 @@ The normalized workspace manifest is written to `tinx.yaml`, the resolved instal
 - `<workspace>/.workspace/path`
 - `<workspace>/.workspace/providers/`
 
-Inspect the installed inventory across workspace and standalone scopes:
+Inspect the current runtime state and installed inventory:
 
 ```bash
-tinx list workspaces
-tinx list providers my-workspace
-tinx list providers default
+tinx status
+tinx status --short
+tinx status --verbose
+tinx ws current
+tinx ws list
+tinx ws list --short
+tinx ws list --ready
+tinx ws list --missing
+tinx ws list --active
+tinx p list
+tinx p list default
+```
+
+Workspace inventory uses a compact table with activity markers, status symbols, and shortened roots:
+
+```text
+NAME             ACTIVE   STATUS     ROOT
+-----------------------------------------
+my-space         *        ✓ ready    ./my-space
+my-workspace              ✓ ready    ./my-workspace
+dev                       ✗ missing  /tmp/.../dev
+default                   ✓ ready    (global)
+
+4 workspaces (3 ready, 1 missing)
+Active workspace: my-space
+```
+
+For quick checks or scripting:
+
+```text
+* my-space
+  my-workspace
+  default
+```
+
+Provider inventory is similarly compact:
+
+```text
+Scope: my-space
+Root: ./my-space
+Status: ✓ ready
+
+NAME      STATUS     PROVIDER             VERSION
+-----------------------------------------------
+lite-ci   ✓ ready    sourceplane/lite-ci  v0.2.25
+
+1 provider (1 ready)
+```
+
+Default status output is intentionally short:
+
+```text
+tinx workspace: my-space
+path: ./my-space
+shims: active
+
+providers:
+  lite-ci  sourceplane/lite-ci  v0.2.25  ready
+```
+
+For a one-line summary:
+
+```text
+my-space | 1 providers | shims active
 ```
 
 Provider manifests can also contribute workspace session variables and extra PATH entries:
@@ -185,19 +262,56 @@ tinx install sourceplane/lite-ci as lite-ci
 Execution still happens through a workspace shell:
 
 ```bash
-tinx workspace activate my-workspace
-tinx add sourceplane/lite-ci as lite-ci
+tinx use my-workspace
+tinx p add sourceplane/lite-ci as lite-ci
 tinx -- lite-ci plan
 ```
+
+Preferred modern UX:
+
+```bash
+tinx init
+tinx use dev
+tinx status
+
+tinx ws list
+tinx ws list --short
+tinx ws list --ready
+tinx ws list --missing
+tinx ws list --active
+tinx ws create dev
+tinx ws use dev
+tinx ws current
+tinx ws delete dev
+
+tinx p list
+tinx p add core/node
+tinx p remove node
+tinx p update
+```
+
+Legacy compatibility commands like `tinx add` still work, but the grouped `workspace` and `provider` commands are the preferred UX.
 
 ## CLI Reference
 
 ```bash
-tinx init <workspace-or-config> [-p <provider-source> [as <alias>]]...
-tinx workspace activate <workspace> [-- command...]
+tinx init [workspace-or-config] [-p <provider-source> [as <alias>]]...
+tinx use <workspace> [-- command...]
+tinx status
+tinx workspace list [--short] [--ready] [--missing] [--active]
+tinx workspace create [workspace-or-config] [-p <provider-source> [as <alias>]]...
+tinx workspace use <workspace> [-- command...]
+tinx workspace current
+tinx workspace delete <workspace>
+tinx ws <subcommand> ...
+tinx workspaces <subcommand> ...
+tinx providers <subcommand> ...
+tinx provider list [workspace|default]
+tinx provider add <provider> [as <alias>] [--plain-http]
+tinx provider remove <provider-or-alias>
+tinx provider update [provider-or-alias...]
+tinx p <subcommand> ...
 tinx add <provider> [as <alias>] [--plain-http]
-tinx list workspaces
-tinx list providers [workspace|default]
 tinx [--workspace <workspace>] -- <command...>
 tinx [--workspace <workspace>] --
 tinx install <ref> [as <alias>] [--source <oci-layout>] [--tag <tag>] [--plain-http]

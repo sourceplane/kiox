@@ -1,0 +1,42 @@
+{
+  "namespace": "sourceplane",
+  "name": "lite-ci",
+  "version": "v0.2.25",
+  "description": "Provider-native CI planning engine that compiles intent into deterministic execution plans",
+  "entrypoint": "entrypoint",
+  "runtime": "binary",
+  "capabilities": [
+    "debug",
+    "plan",
+    "run",
+    "validate"
+  ],
+  "capabilityDescriptions": {
+    "debug": "Trace intent processing and expansion stages",
+    "plan": "Generate an execution plan from an intent specification",
+    "run": "Execute the provider runtime using generated plans",
+    "validate": "Validate intent and component definitions"
+  },
+  "platforms": [
+    {
+      "os": "darwin",
+      "arch": "amd64",
+      "binary": "bin/darwin/amd64/entrypoint"
+    },
+    {
+      "os": "darwin",
+      "arch": "arm64",
+      "binary": "bin/darwin/arm64/entrypoint"
+    },
+    {
+      "os": "linux",
+      "arch": "amd64",
+      "binary": "bin/linux/amd64/entrypoint"
+    },
+    {
+      "os": "linux",
+      "arch": "arm64",
+      "binary": "bin/linux/arm64/entrypoint"
+    }
+  ]
+}

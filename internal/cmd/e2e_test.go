@@ -192,9 +192,15 @@ func TestReleasePushAndInstallFromRegistry(t *testing.T) {
 		t.Fatalf("unexpected install output: %s", installBuf.String())
 	}
 
-	listBuf := runRootCommand(t, []string{"--tinx-home", home, "list", "providers", "default"})
-	if !bytes.Contains(listBuf.Bytes(), []byte("tinx add "+ref+" as echo")) {
-		t.Fatalf("expected default inventory to guide workspace add flow, got: %s", listBuf.String())
+	listBuf := runRootCommand(t, []string{"--tinx-home", home, "provider", "list", "default"})
+	for _, expected := range [][]byte{
+		[]byte("Scope: default"),
+		[]byte("sourceplane/echo-provider"),
+		[]byte("✓ ready"),
+	} {
+		if !bytes.Contains(listBuf.Bytes(), expected) {
+			t.Fatalf("expected %q in default inventory output, got: %s", expected, listBuf.String())
+		}
 	}
 }
 
@@ -277,15 +283,15 @@ func TestRunCommandRemoved(t *testing.T) {
 	}
 }
 
-func TestDirectExecutionRemoved(t *testing.T) {
+func TestUnknownTopLevelCommandUsesCobraError(t *testing.T) {
 	home := filepath.Join(t.TempDir(), ".tinx-home")
 	buf := new(bytes.Buffer)
 	err := executeCLI(context.Background(), []string{"--tinx-home", home, "echo-provider", "plan"}, buf, buf)
 	if err == nil {
-		t.Fatal("expected direct execution to be rejected")
+		t.Fatal("expected unknown command error")
 	}
-	if !strings.Contains(err.Error(), "direct provider execution has been removed") {
-		t.Fatalf("unexpected direct execution error: %v", err)
+	if !strings.Contains(err.Error(), "unknown command \"echo-provider\" for \"tinx\"") {
+		t.Fatalf("unexpected unknown command error: %v", err)
 	}
 }
 

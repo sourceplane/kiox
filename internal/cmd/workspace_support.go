@@ -36,22 +36,8 @@ func executeCLI(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	root := newRootCommand(&parsedRoot)
 	root.SetOut(stdout)
 	root.SetErr(stderr)
-	if shouldTreatAsRemovedDirectExecution(root, strippedArgs) {
-		return directExecutionRemovedError(strippedArgs)
-	}
 	root.SetArgs(strippedArgs)
 	return root.ExecuteContext(ctx)
-}
-
-func shouldTreatAsRemovedDirectExecution(root *cobra.Command, args []string) bool {
-	if len(args) == 0 {
-		return false
-	}
-	if strings.HasPrefix(args[0], "-") {
-		return false
-	}
-	_, _, err := root.Find(args)
-	return err != nil
 }
 
 func ensureGlobalHome(override string) (string, error) {
@@ -111,7 +97,7 @@ func runWorkspaceCommand(cmd *cobra.Command, root *rootOptions, command []string
 		return err
 	}
 	if target == nil {
-		return fmt.Errorf("no active workspace; run tinx workspace activate <workspace> first or execute inside a workspace")
+		return fmt.Errorf("no active workspace; run tinx workspace use <workspace> first or execute inside a workspace")
 	}
 	result, err := workspace.Sync(cmd.Context(), target.Root, target.Config, workspace.SyncOptions{
 		Out: cmd.ErrOrStderr(),
