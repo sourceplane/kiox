@@ -49,6 +49,7 @@ func NewRootCommand() *cobra.Command {
 	cmd.SetVersionTemplate("tinx {{.Version}}\n")
 	cmd.AddCommand(newInitCommand(opts))
 	cmd.AddCommand(newUseCommand(opts))
+	cmd.AddCommand(newListCommand(opts))
 	cmd.AddCommand(newInstallCommand(opts))
 	cmd.AddCommand(newRunCommand(opts))
 	cmd.AddCommand(newDispatchProviderCommand(opts))

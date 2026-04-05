@@ -129,6 +129,14 @@ providers:
 
 The normalized workspace manifest is written to `tinx.yaml`, provider state is stored under `<workspace>/.tinx`, and the resolved install set is written to `tinx.lock`.
 
+Inspect the installed inventory across workspace and standalone scopes:
+
+```bash
+tinx list workspaces
+tinx list providers my-workspace
+tinx list providers default
+```
+
 ## Single-Provider Dispatch
 
 For single-provider flows, `install` and `run` can expose the provider as an ephemeral command after `--`.
@@ -145,13 +153,15 @@ Run directly from a provider reference and execute immediately:
 tinx run sourceplane/lite-ci -- lite-ci run plan
 ```
 
-If you omit `as <alias>`, tinx exposes the provider using its binary entrypoint name.
+If you omit `as <alias>`, tinx still installs the provider metadata into the default home. Use `tinx run <provider-ref> <capability>` for later invocation, or use `-- <entrypoint> ...` for one-shot dispatch.
 
 ## CLI Reference
 
 ```bash
 tinx init <workspace-or-config> [-p <provider-source> [as <alias>]]...
 tinx use <workspace> [-- command...]
+tinx list workspaces
+tinx list providers [workspace|default]
 tinx install <ref> [as <alias>] [--source <oci-layout>] [--tag <tag>] [--plain-http] [-- command...]
 tinx install <alias> <ref> [--source <oci-layout>] [--tag <tag>] [--plain-http]
 tinx run <provider-or-alias> [capability-or-args...] [--plain-http]
