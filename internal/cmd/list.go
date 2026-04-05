@@ -52,7 +52,7 @@ func newListCommand(root *rootOptions) *cobra.Command {
 func newListWorkspacesCommand(root *rootOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "workspaces",
-		Short: "List registered workspaces and their installed providers",
+		Short: "List workspace scopes",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			globalHome, err := ensureGlobalHome(root.Home)
@@ -114,13 +114,13 @@ func listWorkspaceScopes(globalHome string) ([]inventoryScope, error) {
 
 	scopes := make([]inventoryScope, 0, len(namesByRoot)+1)
 	for root, names := range namesByRoot {
-		scope, err := inspectWorkspaceScope(root, names, activeRoot)
+		scope, err := inspectWorkspaceScope(root, names, activeRoot, false)
 		if err != nil {
 			return nil, err
 		}
 		scopes = append(scopes, scope)
 	}
-	defaultScope, err := inspectDefaultScope(globalHome)
+	defaultScope, err := inspectDefaultScope(globalHome, false)
 	if err != nil {
 		return nil, err
 	}
@@ -155,11 +155,11 @@ func resolveProviderScope(root *rootOptions, reference string) (inventoryScope, 
 			return inventoryScope{}, err
 		}
 		if target == nil {
-			return inspectDefaultScope(globalHome)
+			return inspectDefaultScope(globalHome, true)
 		}
-		return inspectWorkspaceScope(target.Root, []string{target.Config.Name()}, normalizeInventoryPath(target.Root))
+		return inspectWorkspaceScope(target.Root, []string{target.Config.Name()}, normalizeInventoryPath(target.Root), true)
 	case defaultInventoryScopeName, "global":
-		return inspectDefaultScope(globalHome)
+		return inspectDefaultScope(globalHome, true)
 	default:
 		target, err := resolveWorkspaceTarget(trimmed, globalHome)
 		if err != nil {
@@ -169,11 +169,11 @@ func resolveProviderScope(root *rootOptions, reference string) (inventoryScope, 
 		if err != nil {
 			return inventoryScope{}, err
 		}
-		return inspectWorkspaceScope(target.Root, []string{target.Config.Name()}, normalizeInventoryPath(activeRoot))
+		return inspectWorkspaceScope(target.Root, []string{target.Config.Name()}, normalizeInventoryPath(activeRoot), true)
 	}
 }
 
-func inspectWorkspaceScope(root string, registeredNames []string, activeRoot string) (inventoryScope, error) {
+func inspectWorkspaceScope(root string, registeredNames []string, activeRoot string, includeProviders bool) (inventoryScope, error) {
 	root = normalizeInventoryPath(root)
 	sort.Strings(registeredNames)
 	scope := inventoryScope{
@@ -213,25 +213,29 @@ func inspectWorkspaceScope(root string, registeredNames []string, activeRoot str
 		scope.Name = name
 	}
 
-	providers, err := inspectProviderInventory(scope.Home)
-	if err != nil {
-		return inventoryScope{}, err
+	if includeProviders {
+		providers, err := inspectProviderInventory(scope.Home)
+		if err != nil {
+			return inventoryScope{}, err
+		}
+		scope.Providers = providers
 	}
-	scope.Providers = providers
 	return scope, nil
 }
 
-func inspectDefaultScope(globalHome string) (inventoryScope, error) {
-	providers, err := inspectProviderInventory(globalHome)
-	if err != nil {
-		return inventoryScope{}, err
-	}
+func inspectDefaultScope(globalHome string, includeProviders bool) (inventoryScope, error) {
 	scope := inventoryScope{
-		Name:      defaultInventoryScopeName,
-		Type:      defaultInventoryScopeName,
-		Home:      normalizeInventoryPath(globalHome),
-		Status:    "ready",
-		Providers: providers,
+		Name:   defaultInventoryScopeName,
+		Type:   defaultInventoryScopeName,
+		Home:   normalizeInventoryPath(globalHome),
+		Status: "ready",
+	}
+	if includeProviders {
+		providers, err := inspectProviderInventory(globalHome)
+		if err != nil {
+			return inventoryScope{}, err
+		}
+		scope.Providers = providers
 	}
 	return scope, nil
 }
@@ -298,7 +302,7 @@ func inspectProviderInventory(home string) ([]providerInventory, error) {
 
 func renderWorkspaceScopes(w io.Writer, scopes []inventoryScope) {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAME\tTYPE\tSTATUS\tACTIVE\tROOT\tHOME")
+	fmt.Fprintln(tw, "NAME\tTYPE\tSTATUS\tACTIVE\tROOT")
 	for _, scope := range scopes {
 		root := scope.Root
 		if root == "" {
@@ -308,23 +312,9 @@ func renderWorkspaceScopes(w io.Writer, scopes []inventoryScope) {
 		if scope.Active {
 			active = "yes"
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", scope.Name, scope.Type, scope.Status, active, root, scope.Home)
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", scope.Name, scope.Type, scope.Status, active, root)
 	}
 	_ = tw.Flush()
-
-	for _, scope := range scopes {
-		writeLine(w, "")
-		writeLine(w, "Providers in %s:", scope.Name)
-		if scope.Status != "ready" {
-			if scope.Detail == "" {
-				writeLine(w, "  unavailable")
-				continue
-			}
-			writeLine(w, "  unavailable: %s", scope.Detail)
-			continue
-		}
-		renderProviderTable(w, scope.Providers)
-	}
 }
 
 func renderProviderScope(w io.Writer, scope inventoryScope) {

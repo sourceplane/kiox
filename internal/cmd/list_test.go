@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestListWorkspacesShowsWorkspaceAndDefaultProviders(t *testing.T) {
+func TestListWorkspacesShowsCompactWorkspaceScopes(t *testing.T) {
 	tempDir := t.TempDir()
 	globalHome := filepath.Join(tempDir, ".tinx-global")
 
@@ -35,19 +35,28 @@ func TestListWorkspacesShowsWorkspaceAndDefaultProviders(t *testing.T) {
 	listBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "list", "workspaces"})
 	output := listBuf.String()
 	for _, expected := range []string{
+		"NAME",
+		"TYPE",
+		"STATUS",
+		"ACTIVE",
+		"ROOT",
 		"my-workspace",
 		"default",
-		"Providers in my-workspace:",
-		"Providers in default:",
-		"lite-ci",
-		"node",
-		"sourceplane/echo-provider",
-		"echo-provider",
-		"tinx lite-ci <capability>",
-		"tinx run sourceplane/echo-provider <capability>",
 	} {
 		if !strings.Contains(output, expected) {
 			t.Fatalf("expected %q in list output, got:\n%s", expected, output)
+		}
+	}
+	for _, unexpected := range []string{
+		"Providers in my-workspace:",
+		"Providers in default:",
+		"acme/lite-ci",
+		"sourceplane/echo-provider",
+		"tinx lite-ci",
+		"tinx run sourceplane/echo-provider",
+	} {
+		if strings.Contains(output, unexpected) {
+			t.Fatalf("did not expect %q in compact workspace output, got:\n%s", unexpected, output)
 		}
 	}
 }
