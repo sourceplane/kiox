@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"text/tabwriter"
+	"unicode/utf8"
 
 	"github.com/spf13/cobra"
 
@@ -16,6 +16,11 @@ import (
 )
 
 const defaultInventoryScopeName = "default"
+
+type workspaceListOptions struct {
+	Short      bool
+	ActiveName string
+}
 
 type inventoryScope struct {
 	Name      string
@@ -63,7 +68,7 @@ func newListWorkspacesCommand(root *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			renderWorkspaceScopes(cmd.OutOrStdout(), scopes)
+			renderWorkspaceScopes(cmd.OutOrStdout(), scopes, workspaceListOptions{ActiveName: activeWorkspaceScopeName(scopes)})
 			return nil
 		},
 	}
@@ -214,7 +219,7 @@ func inspectWorkspaceScope(root string, registeredNames []string, activeRoot str
 	}
 
 	if includeProviders {
-		providers, err := inspectProviderInventory(scope.Home)
+		providers, err := inspectProviderInventory(scope.Home, true)
 		if err != nil {
 			return inventoryScope{}, err
 		}
@@ -231,7 +236,7 @@ func inspectDefaultScope(globalHome string, includeProviders bool) (inventorySco
 		Status: "ready",
 	}
 	if includeProviders {
-		providers, err := inspectProviderInventory(globalHome)
+		providers, err := inspectProviderInventory(globalHome, false)
 		if err != nil {
 			return inventoryScope{}, err
 		}
@@ -240,7 +245,7 @@ func inspectDefaultScope(globalHome string, includeProviders bool) (inventorySco
 	return scope, nil
 }
 
-func inspectProviderInventory(home string) ([]providerInventory, error) {
+func inspectProviderInventory(home string, workspaceScope bool) ([]providerInventory, error) {
 	providers, err := state.ListInstalledProviders(home)
 	if err != nil {
 		return nil, err
@@ -272,7 +277,7 @@ func inspectProviderInventory(home string) ([]providerInventory, error) {
 			Version:    fallbackDisplay(meta.Version),
 			Status:     "ready",
 			Runtime:    fallbackDisplay(strings.TrimSpace(meta.Runtime)),
-			Invoke:     providerInvokeHint(meta, providerAliases),
+			Invoke:     providerInvokeHint(meta, providerAliases, workspaceScope),
 		})
 	}
 
@@ -285,7 +290,7 @@ func inspectProviderInventory(home string) ([]providerInventory, error) {
 			Version:    "-",
 			Status:     "missing",
 			Runtime:    "-",
-			Invoke:     missingProviderInvokeHint(ref, providerAliases),
+			Invoke:     missingProviderInvokeHint(ref, providerAliases, workspaceScope),
 		})
 	}
 
@@ -300,31 +305,38 @@ func inspectProviderInventory(home string) ([]providerInventory, error) {
 	return items, nil
 }
 
-func renderWorkspaceScopes(w io.Writer, scopes []inventoryScope) {
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAME\tTYPE\tSTATUS\tACTIVE\tROOT")
-	for _, scope := range scopes {
-		root := scope.Root
-		if root == "" {
-			root = "-"
+func renderWorkspaceScopes(w io.Writer, scopes []inventoryScope, opts workspaceListOptions) {
+	if len(scopes) == 0 {
+		if !opts.Short {
+			writeLine(w, "no workspaces matched")
 		}
-		active := "-"
-		if scope.Active {
-			active = "yes"
-		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", scope.Name, scope.Type, scope.Status, active, root)
+		return
 	}
-	_ = tw.Flush()
+	if opts.Short {
+		for _, scope := range scopes {
+			writeLine(w, "%s %s", activeMarker(scope.Active), scope.Name)
+		}
+		return
+	}
+	rows := make([][]string, 0, len(scopes))
+	for _, scope := range scopes {
+		rows = append(rows, []string{
+			scope.Name,
+			activeMarker(scope.Active),
+			inventoryStatusDisplay(scope.Status),
+			displayScopeRoot(scope),
+		})
+	}
+	renderTable(w, []string{"NAME", "ACTIVE", "STATUS", "ROOT"}, rows)
+	writeLine(w, "")
+	writeLine(w, "%s", summarizeWorkspaces(scopes))
+	writeLine(w, "Active workspace: %s", summaryValue(opts.ActiveName))
 }
 
 func renderProviderScope(w io.Writer, scope inventoryScope) {
 	writeLine(w, "Scope: %s", scope.Name)
-	writeLine(w, "Type: %s", scope.Type)
-	if scope.Root != "" {
-		writeLine(w, "Root: %s", scope.Root)
-	}
-	writeLine(w, "Home: %s", scope.Home)
-	writeLine(w, "Status: %s", scope.Status)
+	writeLine(w, "Root: %s", displayScopeRoot(scope))
+	writeLine(w, "Status: %s", inventoryStatusDisplay(scope.Status))
 	if scope.Detail != "" {
 		writeLine(w, "Detail: %s", scope.Detail)
 	}
@@ -333,27 +345,25 @@ func renderProviderScope(w io.Writer, scope inventoryScope) {
 	}
 	writeLine(w, "")
 	renderProviderTable(w, scope.Providers)
+	writeLine(w, "")
+	writeLine(w, "%s", summarizeProviders(scope.Providers))
 }
 
 func renderProviderTable(w io.Writer, providers []providerInventory) {
 	if len(providers) == 0 {
-		writeLine(w, "  no providers installed")
+		writeLine(w, "no providers installed")
 		return
 	}
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "ALIASES\tENTRYPOINT\tPROVIDER\tVERSION\tSTATUS\tRUNTIME\tINVOKE")
+	rows := make([][]string, 0, len(providers))
 	for _, provider := range providers {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			displayAliases(provider.Aliases),
-			fallbackDisplay(provider.Entrypoint),
+		rows = append(rows, []string{
+			displayProviderName(provider),
+			inventoryStatusDisplay(provider.Status),
 			provider.Ref,
 			fallbackDisplay(provider.Version),
-			fallbackDisplay(provider.Status),
-			fallbackDisplay(provider.Runtime),
-			fallbackDisplay(provider.Invoke),
-		)
+		})
 	}
-	_ = tw.Flush()
+	renderTable(w, []string{"NAME", "STATUS", "PROVIDER", "VERSION"}, rows)
 }
 
 func loadWorkspaceConfigAtRoot(root string) (workspace.Config, string, error) {
@@ -378,23 +388,39 @@ func providerReference(meta state.ProviderMetadata) string {
 	return strings.TrimSpace(meta.Namespace) + "/" + strings.TrimSpace(meta.Name)
 }
 
-func providerInvokeHint(meta state.ProviderMetadata, aliases []string) string {
+func providerInvokeHint(meta state.ProviderMetadata, aliases []string, workspaceScope bool) string {
 	target := providerReference(meta)
 	if len(aliases) > 0 {
 		target = aliases[0]
 	}
-	prefix := "tinx "
-	if len(aliases) == 0 {
-		prefix = "tinx run "
+	if workspaceScope {
+		return "tinx -- " + target + " ..."
 	}
-	return prefix + target + " <capability>"
+	addTarget := providerAddTarget(meta)
+	if len(aliases) == 0 {
+		return "tinx add " + addTarget
+	}
+	return "tinx add " + addTarget + " as " + aliases[0]
 }
 
-func missingProviderInvokeHint(ref string, aliases []string) string {
-	if len(aliases) > 0 {
-		return "tinx " + aliases[0] + " ..."
+func missingProviderInvokeHint(ref string, aliases []string, workspaceScope bool) string {
+	if workspaceScope {
+		if len(aliases) > 0 {
+			return "tinx -- " + aliases[0] + " ..."
+		}
+		return "tinx -- " + ref + " ..."
 	}
-	return "tinx run " + ref + " ..."
+	if len(aliases) > 0 {
+		return "tinx add " + ref + " as " + aliases[0]
+	}
+	return "tinx add " + ref
+}
+
+func providerAddTarget(meta state.ProviderMetadata) string {
+	if ref := strings.TrimSpace(meta.Source.Ref); ref != "" {
+		return ref
+	}
+	return providerReference(meta)
 }
 
 func displayEntrypoint(meta state.ProviderMetadata) string {
@@ -418,6 +444,13 @@ func primaryProviderDisplay(provider providerInventory) string {
 	}
 	if provider.Entrypoint != "" && provider.Entrypoint != "-" {
 		return provider.Entrypoint
+	}
+	return provider.Ref
+}
+
+func displayProviderName(provider providerInventory) string {
+	if len(provider.Aliases) > 0 {
+		return strings.Join(provider.Aliases, ",")
 	}
 	return provider.Ref
 }
@@ -455,6 +488,222 @@ func firstNonEmpty(values ...string) string {
 func fallbackDisplay(value string) string {
 	if strings.TrimSpace(value) == "" {
 		return "-"
+	}
+	return value
+}
+
+func filterWorkspaceScopes(scopes []inventoryScope, statusFilter string, activeOnly bool) []inventoryScope {
+	if statusFilter == "" && !activeOnly {
+		return scopes
+	}
+	filtered := make([]inventoryScope, 0, len(scopes))
+	for _, scope := range scopes {
+		if activeOnly && !scope.Active {
+			continue
+		}
+		if statusFilter != "" && !strings.EqualFold(scope.Status, statusFilter) {
+			continue
+		}
+		filtered = append(filtered, scope)
+	}
+	return filtered
+}
+
+func activeWorkspaceScopeName(scopes []inventoryScope) string {
+	for _, scope := range scopes {
+		if scope.Active {
+			return scope.Name
+		}
+	}
+	return ""
+}
+
+func renderTable(w io.Writer, headers []string, rows [][]string) {
+	widths := make([]int, len(headers))
+	for index, header := range headers {
+		widths[index] = textWidth(header)
+	}
+	for _, row := range rows {
+		for index, cell := range row {
+			if width := textWidth(cell); width > widths[index] {
+				widths[index] = width
+			}
+		}
+	}
+	headerLine := formatTableRow(headers, widths)
+	writeLine(w, "%s", headerLine)
+	writeLine(w, "%s", strings.Repeat("-", len(headerLine)))
+	for _, row := range rows {
+		writeLine(w, "%s", formatTableRow(row, widths))
+	}
+}
+
+func formatTableRow(cells []string, widths []int) string {
+	parts := make([]string, 0, len(cells))
+	for index, cell := range cells {
+		if index == len(cells)-1 {
+			parts = append(parts, cell)
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%-*s", widths[index], cell))
+	}
+	return strings.Join(parts, "  ")
+}
+
+func textWidth(value string) int {
+	return utf8.RuneCountInString(value)
+}
+
+func displayScopeRoot(scope inventoryScope) string {
+	if scope.Type == defaultInventoryScopeName {
+		return "(global)"
+	}
+	return displayInventoryPath(scope.Root)
+}
+
+func displayInventoryPath(path string) string {
+	absPath := normalizeInventoryPath(path)
+	if absPath == "" {
+		return "-"
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		normalizedCWD := normalizeInventoryPath(cwd)
+		if pathWithinBase(absPath, normalizedCWD) {
+			return displayRelativePath(absPath)
+		}
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		normalizedHome := normalizeInventoryPath(home)
+		if pathWithinBase(absPath, normalizedHome) {
+			rel, err := filepath.Rel(normalizedHome, absPath)
+			if err == nil {
+				rel = filepath.Clean(rel)
+				if rel == "." {
+					return "~"
+				}
+				return "~" + string(os.PathSeparator) + rel
+			}
+		}
+	}
+	return compactAbsolutePath(absPath)
+}
+
+func pathWithinBase(target, base string) bool {
+	if target == "" || base == "" {
+		return false
+	}
+	rel, err := filepath.Rel(base, target)
+	if err != nil {
+		return false
+	}
+	rel = filepath.Clean(rel)
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)))
+}
+
+func compactAbsolutePath(path string) string {
+	cleaned := filepath.Clean(path)
+	volume := filepath.VolumeName(cleaned)
+	trimmed := strings.TrimPrefix(cleaned, volume)
+	trimmed = strings.TrimPrefix(trimmed, string(os.PathSeparator))
+	if trimmed == "" {
+		if volume != "" {
+			return volume + string(os.PathSeparator)
+		}
+		return string(os.PathSeparator)
+	}
+	parts := strings.Split(trimmed, string(os.PathSeparator))
+	filtered := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if strings.TrimSpace(part) != "" {
+			filtered = append(filtered, part)
+		}
+	}
+	if len(filtered) <= 3 {
+		return cleaned
+	}
+	prefix := string(os.PathSeparator)
+	if volume != "" {
+		prefix = volume + string(os.PathSeparator)
+	}
+	return filepath.Join(prefix, filtered[0], "...", filtered[len(filtered)-1])
+}
+
+func activeMarker(active bool) string {
+	if active {
+		return "*"
+	}
+	return " "
+}
+
+func inventoryStatusDisplay(status string) string {
+	label := strings.TrimSpace(status)
+	if label == "" {
+		label = "unknown"
+	}
+	return inventoryStatusSymbol(label) + " " + label
+}
+
+func inventoryStatusSymbol(status string) string {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "ready":
+		return "✓"
+	case "missing":
+		return "✗"
+	case "partial":
+		return "~"
+	case "invalid", "error":
+		return "!"
+	default:
+		return "?"
+	}
+}
+
+func summarizeWorkspaces(scopes []inventoryScope) string {
+	counts := make(map[string]int, len(scopes))
+	for _, scope := range scopes {
+		counts[strings.ToLower(strings.TrimSpace(scope.Status))]++
+	}
+	return summarizeInventory(len(scopes), "workspace", "workspaces", counts)
+}
+
+func summarizeProviders(providers []providerInventory) string {
+	counts := make(map[string]int, len(providers))
+	for _, provider := range providers {
+		counts[strings.ToLower(strings.TrimSpace(provider.Status))]++
+	}
+	return summarizeInventory(len(providers), "provider", "providers", counts)
+}
+
+func summarizeInventory(total int, singular, plural string, counts map[string]int) string {
+	summary := countLabel(total, singular, plural)
+	breakdown := statusBreakdown(counts)
+	if breakdown == "" {
+		return summary
+	}
+	return summary + " (" + breakdown + ")"
+}
+
+func countLabel(total int, singular, plural string) string {
+	if total == 1 {
+		return fmt.Sprintf("1 %s", singular)
+	}
+	return fmt.Sprintf("%d %s", total, plural)
+}
+
+func statusBreakdown(counts map[string]int) string {
+	ordered := []string{"ready", "missing", "invalid", "partial", "unknown"}
+	parts := make([]string, 0, len(ordered))
+	for _, status := range ordered {
+		if count := counts[status]; count > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", count, status))
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
+func summaryValue(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "none"
 	}
 	return value
 }

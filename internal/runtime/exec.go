@@ -16,6 +16,7 @@ type ExecOptions struct {
 	ProviderHome string
 	TinxVersion  string
 	EnvOverrides map[string]string
+	PathEntries  []string
 	Stdout       io.Writer
 	Stderr       io.Writer
 	Stdin        *os.File
@@ -33,6 +34,7 @@ func Execute(opts ExecOptions) error {
 	for key, value := range opts.EnvOverrides {
 		env[key] = value
 	}
+	applyPathEntries(env, opts.PathEntries)
 	cmd.Env = envListFromMap(env)
 	cmd.Stdout = opts.Stdout
 	cmd.Stderr = opts.Stderr
@@ -41,6 +43,30 @@ func Execute(opts ExecOptions) error {
 		return fmt.Errorf("execute provider: %w", err)
 	}
 	return nil
+}
+
+func applyPathEntries(env map[string]string, pathEntries []string) {
+	filtered := make([]string, 0, len(pathEntries))
+	seen := make(map[string]struct{}, len(pathEntries))
+	for _, entry := range pathEntries {
+		trimmed := strings.TrimSpace(entry)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		filtered = append(filtered, trimmed)
+	}
+	if len(filtered) == 0 {
+		return
+	}
+	existingPath := strings.TrimSpace(env["PATH"])
+	if existingPath != "" {
+		filtered = append(filtered, existingPath)
+	}
+	env["PATH"] = strings.Join(filtered, string(os.PathListSeparator))
 }
 
 func envMapFromList(values []string) map[string]string {

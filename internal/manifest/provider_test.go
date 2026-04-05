@@ -3,29 +3,36 @@ package manifest
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
 func TestLoadProvider(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "tinx.yaml")
-	content := `apiVersion: tinx.io/v1
-kind: Provider
-metadata:
-  namespace: sourceplane
-  name: demo
-  version: v0.1.0
-spec:
-  runtime: binary
-  entrypoint: demo
-  platforms:
-    - os: darwin
-      arch: arm64
-      binary: bin/darwin/arm64/demo
-  capabilities:
-    plan:
-      description: Generate a plan
-`
+	content := strings.Join([]string{
+		"apiVersion: tinx.io/v1",
+		"kind: Provider",
+		"metadata:",
+		"  namespace: sourceplane",
+		"  name: demo",
+		"  version: v0.1.0",
+		"spec:",
+		"  runtime: binary",
+		"  entrypoint: demo",
+		"  env:",
+		"    DEMO_REF: ${provider_ref}",
+		"  path:",
+		"    - assets/bin",
+		"  platforms:",
+		"    - os: darwin",
+		"      arch: arm64",
+		"      binary: bin/darwin/arm64/demo",
+		"  capabilities:",
+		"    plan:",
+		"      description: Generate a plan",
+		"",
+	}, "\n")
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -38,6 +45,12 @@ spec:
 	}
 	if !provider.HasCapability("plan") {
 		t.Fatal("expected plan capability")
+	}
+	if provider.Spec.Env["DEMO_REF"] != "${provider_ref}" {
+		t.Fatalf("expected env expansion template to round-trip, got %q", provider.Spec.Env["DEMO_REF"])
+	}
+	if len(provider.Spec.Path) != 1 || provider.Spec.Path[0] != "assets/bin" {
+		t.Fatalf("expected provider path to round-trip, got %#v", provider.Spec.Path)
 	}
 }
 

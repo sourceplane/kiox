@@ -23,32 +23,21 @@ type workspaceTarget struct {
 }
 
 func executeCLI(ctx context.Context, args []string, stdout, stderr io.Writer) error {
-	home, strippedArgs, err := extractHomeArg(args)
+	parsedRoot, strippedArgs, err := extractRootArgs(args)
 	if err != nil {
 		return err
 	}
-	root := NewRootCommand()
-	root.SetOut(stdout)
-	root.SetErr(stderr)
-	if home != "" {
-		if setErr := root.PersistentFlags().Set("tinx-home", home); setErr != nil {
-			return setErr
-		}
-	}
-	root.SetArgs(strippedArgs)
-	if err := root.ExecuteContext(ctx); err != nil {
-		if !strings.Contains(err.Error(), "unknown command") {
-			return err
-		}
+	if len(strippedArgs) > 0 && strippedArgs[0] == "--" {
 		fallback := &cobra.Command{}
 		fallback.SetOut(stdout)
 		fallback.SetErr(stderr)
-		if len(strippedArgs) > 0 && strippedArgs[0] == "--" {
-			return runWorkspaceCommand(fallback, &rootOptions{Home: home}, strippedArgs[1:])
-		}
-		return runAlias(fallback, &rootOptions{Home: home}, strippedArgs)
+		return runWorkspaceCommand(fallback, &parsedRoot, strippedArgs[1:])
 	}
-	return nil
+	root := newRootCommand(&parsedRoot)
+	root.SetOut(stdout)
+	root.SetErr(stderr)
+	root.SetArgs(strippedArgs)
+	return root.ExecuteContext(ctx)
 }
 
 func ensureGlobalHome(override string) (string, error) {
@@ -99,19 +88,16 @@ func splitArgsAtDash(cmd *cobra.Command, args []string) ([]string, []string) {
 }
 
 func runWorkspaceCommand(cmd *cobra.Command, root *rootOptions, command []string) error {
-	if len(command) == 0 {
-		return fmt.Errorf("workspace command is required")
-	}
 	globalHome, err := ensureGlobalHome(root.Home)
 	if err != nil {
 		return err
 	}
-	target, err := resolveCurrentWorkspaceTarget(globalHome)
+	target, err := resolveSelectedWorkspaceTarget(root, globalHome)
 	if err != nil {
 		return err
 	}
 	if target == nil {
-		return fmt.Errorf("no active workspace; run tinx use <workspace> first or execute inside a workspace")
+		return fmt.Errorf("no active workspace; run tinx workspace use <workspace> first or execute inside a workspace")
 	}
 	result, err := workspace.Sync(cmd.Context(), target.Root, target.Config, workspace.SyncOptions{
 		Out: cmd.ErrOrStderr(),
@@ -119,15 +105,36 @@ func runWorkspaceCommand(cmd *cobra.Command, root *rootOptions, command []string
 	if err != nil {
 		return err
 	}
-	return cmdruntime.Dispatch(cmdruntime.DispatchOptions{
-		Home:       result.Home,
-		WorkingDir: mustGetwd(),
-		Commands:   providerCommandsFromAliases(result.Aliases),
-		Command:    command,
-		Stdout:     cmd.OutOrStdout(),
-		Stderr:     cmd.ErrOrStderr(),
-		Stdin:      os.Stdin,
+	shellEnv, err := workspace.BuildShellEnvironment(target.Root, result.Home, result.Aliases, workspace.ShellBuildOptions{
+		Out: cmd.ErrOrStderr(),
 	})
+	if err != nil {
+		return err
+	}
+	runtimeOpts := cmdruntime.ShellOptions{
+		WorkingDir:  workspaceWorkingDir(target.Root),
+		Env:         shellEnv.Env,
+		PathEntries: shellEnv.PathEntries,
+		Stdout:      cmd.OutOrStdout(),
+		Stderr:      cmd.ErrOrStderr(),
+		Stdin:       os.Stdin,
+	}
+	if len(command) == 0 {
+		return cmdruntime.RunInteractiveShell(runtimeOpts)
+	}
+	return cmdruntime.RunCommand(cmdruntime.ShellCommandOptions{
+		ShellOptions: runtimeOpts,
+		Command:      command,
+	})
+}
+
+func resolveSelectedWorkspaceTarget(root *rootOptions, globalHome string) (*workspaceTarget, error) {
+	if root != nil {
+		if reference := strings.TrimSpace(root.Workspace); reference != "" {
+			return resolveWorkspaceTarget(reference, globalHome)
+		}
+	}
+	return resolveCurrentWorkspaceTarget(globalHome)
 }
 
 func resolveCurrentWorkspaceTarget(globalHome string) (*workspaceTarget, error) {
@@ -218,28 +225,16 @@ func rememberWorkspaceTarget(globalHome string, target *workspaceTarget) error {
 	return nil
 }
 
-func providerCommandsFromAliases(aliases map[string]string) []cmdruntime.ProviderCommand {
-	names := make([]string, 0, len(aliases))
-	for name := range aliases {
-		names = append(names, name)
+func workspaceWorkingDir(root string) string {
+	workingDir := mustGetwd()
+	if root == "" {
+		return workingDir
 	}
-	sort.Strings(names)
-	commands := make([]cmdruntime.ProviderCommand, 0, len(names))
-	for _, name := range names {
-		commands = append(commands, cmdruntime.ProviderCommand{Name: name, Ref: aliases[name]})
+	relativePath, err := filepath.Rel(root, workingDir)
+	if err == nil && relativePath != ".." && !strings.HasPrefix(relativePath, ".."+string(os.PathSeparator)) {
+		return workingDir
 	}
-	return commands
-}
-
-func commandNameForProvider(meta state.ProviderMetadata) string {
-	entrypoint := strings.TrimSpace(filepath.Base(meta.Entrypoint))
-	if entrypoint != "" && entrypoint != "." && !looksLikeManifestOrScript(entrypoint) {
-		return entrypoint
-	}
-	if meta.Name != "" {
-		return meta.Name
-	}
-	return entrypoint
+	return root
 }
 
 func looksLikeManifestOrScript(name string) bool {

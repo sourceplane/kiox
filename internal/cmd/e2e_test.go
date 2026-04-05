@@ -11,10 +11,9 @@ import (
 	"testing"
 
 	gcrregistry "github.com/google/go-containerregistry/pkg/registry"
-	"github.com/spf13/cobra"
 )
 
-func TestReleaseInstallAndRun(t *testing.T) {
+func TestReleaseAndInstallLocalLayout(t *testing.T) {
 	workspace := t.TempDir()
 	home := filepath.Join(workspace, ".tinx-home")
 	providerDir := copyTestProvider(t, workspace)
@@ -30,7 +29,23 @@ func TestReleaseInstallAndRun(t *testing.T) {
 		t.Fatalf("unexpected release output: %s", releaseBuf.String())
 	}
 
-	runInstallAndRunAssertions(t, home, providerDir, filepath.Join(providerDir, "oci"), "")
+	installBuf := runRootCommand(t, []string{
+		"--tinx-home", home,
+		"install", "echo", "sourceplane/echo-provider",
+		"--source", filepath.Join(providerDir, "oci"),
+	})
+	if !bytes.Contains(installBuf.Bytes(), []byte("installed sourceplane/echo-provider@v0.1.0")) {
+		t.Fatalf("unexpected install output: %s", installBuf.String())
+	}
+	for _, expected := range []string{
+		filepath.Join(home, "providers", "sourceplane", "echo-provider", "metadata.json"),
+		filepath.Join(home, "providers", "sourceplane", "echo-provider", "v0.1.0", "oci", "index.json"),
+		filepath.Join(home, "providers", "sourceplane", "echo-provider", "v0.1.0", "tinx.yaml"),
+	} {
+		if _, err := os.Stat(expected); err != nil {
+			t.Fatalf("expected installed artifact %s: %v", expected, err)
+		}
+	}
 }
 
 func TestReleaseDelegatesToGoReleaser(t *testing.T) {
@@ -177,16 +192,19 @@ func TestReleasePushAndInstallFromRegistry(t *testing.T) {
 		t.Fatalf("unexpected install output: %s", installBuf.String())
 	}
 
-	runBuf := runRootCommand(t, []string{
-		"--tinx-home", home,
-		"run", "echo", "plan", "--intent", "intent.yaml",
-	})
-	if !bytes.Contains(runBuf.Bytes(), []byte("capability=plan")) {
-		t.Fatalf("unexpected run output: %s", runBuf.String())
+	listBuf := runRootCommand(t, []string{"--tinx-home", home, "provider", "list", "default"})
+	for _, expected := range [][]byte{
+		[]byte("Scope: default"),
+		[]byte("sourceplane/echo-provider"),
+		[]byte("✓ ready"),
+	} {
+		if !bytes.Contains(listBuf.Bytes(), expected) {
+			t.Fatalf("expected %q in default inventory output, got: %s", expected, listBuf.String())
+		}
 	}
 }
 
-func TestRunDirectFromRegistryWithoutInstall(t *testing.T) {
+func TestInstallUsesCachedRemoteProvider(t *testing.T) {
 	workspace := t.TempDir()
 	home := filepath.Join(workspace, ".tinx-home")
 	providerDir := copyTestProvider(t, workspace)
@@ -208,126 +226,24 @@ func TestRunDirectFromRegistryWithoutInstall(t *testing.T) {
 		t.Fatalf("unexpected push output: %s", releaseBuf.String())
 	}
 
-	runBuf := runRootCommand(t, []string{
+	firstInstallBuf := runRootCommand(t, []string{
 		"--tinx-home", home,
-		"run", ref, "plan",
-		"--plain-http",
-		"--intent", "intent.yaml",
-	})
-	if !bytes.Contains(runBuf.Bytes(), []byte("capability=plan")) {
-		t.Fatalf("unexpected direct run output: %s", runBuf.String())
-	}
-	if !bytes.Contains(runBuf.Bytes(), []byte("args=--intent,intent.yaml")) {
-		t.Fatalf("expected provider args to include --intent, got: %s", runBuf.String())
-	}
-
-	runWithConfigBuf := runRootCommand(t, []string{
-		"--tinx-home", home,
-		"run", ref, "plan",
-		"--config-dir", "/tmp/compositions",
+		"install", ref,
 		"--plain-http",
 	})
-	if !bytes.Contains(runWithConfigBuf.Bytes(), []byte("args=--config-dir,/tmp/compositions")) {
-		t.Fatalf("expected provider args to include --config-dir, got: %s", runWithConfigBuf.String())
-	}
-}
-
-func TestRunThenInstallUsesCachedRemoteProvider(t *testing.T) {
-	workspace := t.TempDir()
-	home := filepath.Join(workspace, ".tinx-home")
-	providerDir := copyTestProvider(t, workspace)
-	server := httptest.NewServer(gcrregistry.New())
-	registryHost := strings.TrimPrefix(server.URL, "http://")
-	ref := registryHost + "/sourceplane/echo-provider:v0.1.0"
-
-	releaseBuf := runRootCommand(t, []string{
-		"--tinx-home", home,
-		"release",
-		"--manifest", filepath.Join(providerDir, "tinx.yaml"),
-		"--dist", filepath.Join(providerDir, "dist"),
-		"--output", filepath.Join(providerDir, "oci"),
-		"--push", ref,
-		"--plain-http",
-	})
-	if !bytes.Contains(releaseBuf.Bytes(), []byte("pushed "+ref)) {
-		t.Fatalf("unexpected push output: %s", releaseBuf.String())
-	}
-
-	firstRunBuf := runRootCommand(t, []string{
-		"--tinx-home", home,
-		"run", ref, "plan",
-		"--plain-http",
-		"--intent", "intent.yaml",
-	})
-	if !bytes.Contains(firstRunBuf.Bytes(), []byte("capability=plan")) {
-		t.Fatalf("unexpected first direct run output: %s", firstRunBuf.String())
+	if !bytes.Contains(firstInstallBuf.Bytes(), []byte("installed sourceplane/echo-provider@v0.1.0")) {
+		t.Fatalf("unexpected first install output: %s", firstInstallBuf.String())
 	}
 
 	server.Close()
 
-	secondRunBuf := runRootCommand(t, []string{
-		"--tinx-home", home,
-		"run", ref, "plan",
-		"--plain-http",
-		"--intent", "intent.yaml",
-	})
-	if !bytes.Contains(secondRunBuf.Bytes(), []byte("capability=plan")) {
-		t.Fatalf("unexpected second direct run output: %s", secondRunBuf.String())
-	}
-
-	installBuf := runRootCommand(t, []string{
+	secondInstallBuf := runRootCommand(t, []string{
 		"--tinx-home", home,
 		"install", "ci", ref,
 		"--plain-http",
 	})
-	if !bytes.Contains(installBuf.Bytes(), []byte("installed sourceplane/echo-provider@v0.1.0")) {
-		t.Fatalf("unexpected install output after cache: %s", installBuf.String())
-	}
-
-	runAliasBuf := runRootCommand(t, []string{
-		"--tinx-home", home,
-		"run", "ci", "plan",
-		"--intent", "intent.yaml",
-	})
-	if !bytes.Contains(runAliasBuf.Bytes(), []byte("capability=plan")) {
-		t.Fatalf("unexpected alias run output after cache: %s", runAliasBuf.String())
-	}
-}
-
-func TestRunProviderHelpFromAlias(t *testing.T) {
-	workspace := t.TempDir()
-	home := filepath.Join(workspace, ".tinx-home")
-	providerDir := copyTestProvider(t, workspace)
-
-	releaseBuf := runRootCommand(t, []string{
-		"--tinx-home", home,
-		"release",
-		"--manifest", filepath.Join(providerDir, "tinx.yaml"),
-		"--dist", filepath.Join(providerDir, "dist"),
-		"--output", filepath.Join(providerDir, "oci"),
-	})
-	if !bytes.Contains(releaseBuf.Bytes(), []byte("released sourceplane/echo-provider")) {
-		t.Fatalf("unexpected release output: %s", releaseBuf.String())
-	}
-
-	installBuf := runRootCommand(t, []string{
-		"--tinx-home", home,
-		"install", "echo", "sourceplane/echo-provider",
-		"--source", filepath.Join(providerDir, "oci"),
-	})
-	if !bytes.Contains(installBuf.Bytes(), []byte("installed sourceplane/echo-provider@v0.1.0")) {
-		t.Fatalf("unexpected install output: %s", installBuf.String())
-	}
-
-	helpBuf := runRootCommand(t, []string{
-		"--tinx-home", home,
-		"run", "echo", "help",
-	})
-	if !bytes.Contains(helpBuf.Bytes(), []byte("Capabilities:")) {
-		t.Fatalf("missing capabilities section in help output: %s", helpBuf.String())
-	}
-	if !bytes.Contains(helpBuf.Bytes(), []byte("plan")) {
-		t.Fatalf("missing capability in help output: %s", helpBuf.String())
+	if !bytes.Contains(secondInstallBuf.Bytes(), []byte("installed sourceplane/echo-provider@v0.1.0")) {
+		t.Fatalf("unexpected cached install output: %s", secondInstallBuf.String())
 	}
 }
 
@@ -343,39 +259,40 @@ func TestInstallRejectsProviderSourceSchemes(t *testing.T) {
 	}
 }
 
-func TestRunRejectsProviderSourceSchemes(t *testing.T) {
+func TestInstallRejectsStandaloneExecutionAfterDash(t *testing.T) {
 	home := filepath.Join(t.TempDir(), ".tinx-home")
 	buf := new(bytes.Buffer)
-	err := executeCLI(context.Background(), []string{"--tinx-home", home, "run", "custom://acme/setup@v1", "plan"}, buf, buf)
+	err := executeCLI(context.Background(), []string{"--tinx-home", home, "install", "sourceplane/echo-provider", "--", "echo-provider", "plan"}, buf, buf)
 	if err == nil {
-		t.Fatal("expected run to reject provider source scheme")
+		t.Fatal("expected install to reject standalone execution")
 	}
-	if !strings.Contains(err.Error(), `unsupported provider source "custom://acme/setup@v1"`) {
+	if !strings.Contains(err.Error(), "install no longer executes commands") {
+		t.Fatalf("unexpected install error: %v", err)
+	}
+}
+
+func TestRunCommandRemoved(t *testing.T) {
+	home := filepath.Join(t.TempDir(), ".tinx-home")
+	buf := new(bytes.Buffer)
+	err := executeCLI(context.Background(), []string{"--tinx-home", home, "run", "sourceplane/echo-provider", "plan"}, buf, buf)
+	if err == nil {
+		t.Fatal("expected run to be rejected")
+	}
+	if !strings.Contains(err.Error(), "'tinx run' has been removed") {
 		t.Fatalf("unexpected run error: %v", err)
 	}
 }
 
-func runInstallAndRunAssertions(t *testing.T, home, providerDir, layoutPath, ref string) {
-	t.Helper()
-	installArgs := []string{"--tinx-home", home, "install", "echo", "sourceplane/echo-provider", "--source", layoutPath}
-	if ref != "" {
-		installArgs = []string{"--tinx-home", home, "install", "echo", ref, "--plain-http"}
+func TestUnknownTopLevelCommandUsesCobraError(t *testing.T) {
+	home := filepath.Join(t.TempDir(), ".tinx-home")
+	buf := new(bytes.Buffer)
+	err := executeCLI(context.Background(), []string{"--tinx-home", home, "echo-provider", "plan"}, buf, buf)
+	if err == nil {
+		t.Fatal("expected unknown command error")
 	}
-	installBuf := runRootCommand(t, installArgs)
-	if !bytes.Contains(installBuf.Bytes(), []byte("installed sourceplane/echo-provider@v0.1.0")) {
-		t.Fatalf("unexpected install output: %s", installBuf.String())
+	if !strings.Contains(err.Error(), "unknown command \"echo-provider\" for \"tinx\"") {
+		t.Fatalf("unexpected unknown command error: %v", err)
 	}
-
-	runBuf := runRootCommand(t, []string{"--tinx-home", home, "run", "echo", "plan", "--intent", "intent.yaml"})
-	if !bytes.Contains(runBuf.Bytes(), []byte("capability=plan")) {
-		t.Fatalf("unexpected run output: %s", runBuf.String())
-	}
-
-	cachedAsset := filepath.Join(home, "providers", "sourceplane", "echo-provider", "v0.1.0", "assets", "templates", "intent.json")
-	if _, err := os.Stat(cachedAsset); err != nil {
-		t.Fatalf("expected cached asset at %s: %v", cachedAsset, err)
-	}
-	_ = providerDir
 }
 
 func copyTestProvider(t *testing.T, workspace string) string {
@@ -419,38 +336,4 @@ func runRootCommand(t *testing.T, args []string) *bytes.Buffer {
 		t.Fatalf("command %v failed: %v\n%s", args, err, buf.String())
 	}
 	return buf
-}
-
-func runAliasCommand(t *testing.T, home string, args []string) *bytes.Buffer {
-	t.Helper()
-	cmd := &cobra.Command{}
-	buf := new(bytes.Buffer)
-	cmd.SetOut(buf)
-	cmd.SetErr(buf)
-	if err := runAlias(cmd, &rootOptions{Home: home}, args); err != nil {
-		t.Fatalf("alias command %v failed: %v\n%s", args, err, buf.String())
-	}
-	return buf
-}
-
-func TestTinxCLIHelperProcess(t *testing.T) {
-	if os.Getenv("TINX_CLI_HELPER_PROCESS") != "1" {
-		return
-	}
-	separator := -1
-	for index, arg := range os.Args {
-		if arg == "--" {
-			separator = index
-			break
-		}
-	}
-	if separator < 0 || separator+1 >= len(os.Args) {
-		fmt.Fprintln(os.Stderr, "missing helper separator")
-		os.Exit(2)
-	}
-	if err := executeCLI(context.Background(), os.Args[separator+1:], os.Stdout, os.Stderr); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	os.Exit(0)
 }

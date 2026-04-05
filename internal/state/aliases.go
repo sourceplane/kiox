@@ -128,6 +128,26 @@ func RememberWorkspace(home, name, workspaceRoot string) error {
 	return SaveConfig(home, config)
 }
 
+func ForgetWorkspace(home, workspaceRoot string) error {
+	config, err := LoadConfig(home)
+	if err != nil {
+		return err
+	}
+	workspaceRoot = strings.TrimSpace(workspaceRoot)
+	if workspaceRoot == "" {
+		return nil
+	}
+	for name, root := range config.Workspaces {
+		if strings.TrimSpace(root) == workspaceRoot {
+			delete(config.Workspaces, name)
+		}
+	}
+	if strings.TrimSpace(config.ActiveWorkspace) == workspaceRoot {
+		config.ActiveWorkspace = ""
+	}
+	return SaveConfig(home, config)
+}
+
 func RegisteredWorkspaceNames(home string) ([]string, error) {
 	workspaces, err := LoadWorkspaces(home)
 	if err != nil {

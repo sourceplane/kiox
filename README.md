@@ -1,10 +1,10 @@
 # tinx
 
-OCI-native provider runtime and packager.
+OCI-native provider runtime, workspace shell, and packager.
 
 `tinx` is a CLI for building, packaging, installing, and running providers distributed as OCI artifacts.
-It is designed for provider-based workflows where capabilities such as `plan`, `validate`, and `release`
-are executed from versioned provider binaries.
+It is designed for provider-based workflows where versioned provider binaries can be composed into a
+workspace-local shell environment and invoked like normal commands.
 
 ## Project Status
 
@@ -16,13 +16,17 @@ are executed from versioned provider binaries.
 
 - **OCI-native distribution** for providers and metadata
 - **Lazy runtime materialization** (fetch platform binary only when needed)
-- **Alias-based UX** for ergonomic command execution
+- **Workspace-local shell UX** with provider shims on `PATH`
 - **Portable packaging** via OCI layout (`pack`) and registry push (`release --push`)
 
 ## Architecture Highlights
 
+- `tinx init` creates a workspace in the current or target directory and selects it immediately
+- `tinx use` or `tinx workspace use` selects the current workspace scope
+- `tinx provider add` mutates a workspace manifest and syncs providers into `.workspace/`
+- `tinx status` shows the current workspace, providers, shims, and generated environment artifacts
+- `tinx --` rebuilds a workspace shell environment and runs any command, or launches an interactive shell
 - `tinx install` installs provider metadata from registry or local OCI layout
-- `tinx run` resolves alias/provider and executes a capability
 - `tinx pack` packages a provider into an OCI image layout
 - `tinx release` builds, packages, and optionally pushes artifacts
 
@@ -84,27 +88,59 @@ make run-example
 
 ## Workspaces
 
-Workspaces are the preferred UX for multi-provider flows. A workspace installs providers into a workspace-local `.tinx` home, exposes aliases on `PATH`, and lets providers invoke each other naturally.
+Workspaces are the preferred UX for multi-provider flows. A workspace installs providers into a workspace-local `.workspace` runtime, writes shell artifacts on each `tinx -- ...` invocation, exposes provider shims on `PATH`, and lets providers invoke each other naturally.
 
-Create a workspace from flags:
+Create a workspace in the current directory and switch tinx to it immediately:
 
 ```bash
-tinx init my-workspace \
-  -p core/node as node \
-  -p sourceplane/lite-ci as lite-ci
+tinx init
 ```
 
-Activate it and dispatch a command through the workspace provider set:
+Create a named workspace elsewhere:
+
+```bash
+tinx init my-workspace
+```
+
+Switch to a workspace later:
 
 ```bash
 tinx use my-workspace
-tinx -- lite-ci run plan -- node deploy
 ```
 
-You can also activate and run in one step:
+Add providers to the active workspace:
 
 ```bash
-tinx use my-workspace -- lite-ci run plan -- node deploy
+tinx provider add core/node as node
+tinx provider add sourceplane/lite-ci as lite-ci
+```
+
+Short aliases are available for a shorter flow:
+
+```bash
+tinx ws use my-workspace
+tinx p add core/node as node
+tinx p add sourceplane/lite-ci as lite-ci
+```
+
+Run any shell command through the workspace environment:
+
+```bash
+tinx -- node build
+tinx -- lite-ci plan
+tinx -- lite-ci plan -- node build
+```
+
+Launch an interactive shell with the workspace environment loaded:
+
+```bash
+tinx --
+```
+
+Target a workspace explicitly without selecting it globally:
+
+```bash
+tinx --workspace my-workspace -- node build
 ```
 
 Materialize a workspace from a manifest file:
@@ -126,46 +162,160 @@ providers:
   kubectl: tinx/kubectl
 ```
 
-The normalized workspace manifest is written to `tinx.yaml`, provider state is stored under `<workspace>/.tinx`, and the resolved install set is written to `tinx.lock`.
+The normalized workspace manifest is written to `tinx.yaml`, the resolved install set is written to `tinx.lock`, and runtime state is stored under:
 
-Inspect the installed inventory across workspace and standalone scopes:
+- `<workspace>/.workspace/env`
+- `<workspace>/.workspace/path`
+- `<workspace>/.workspace/providers/`
 
-```bash
-tinx list workspaces
-tinx list providers my-workspace
-tinx list providers default
-```
-
-## Single-Provider Dispatch
-
-For single-provider flows, `install` and `run` can expose the provider as an ephemeral command after `--`.
-
-Install with an alias and execute immediately:
+Inspect the current runtime state and installed inventory:
 
 ```bash
-tinx install sourceplane/lite-ci as lite-ci -- lite-ci run plan
+tinx status
+tinx status --short
+tinx status --verbose
+tinx ws current
+tinx ws list
+tinx ws list --short
+tinx ws list --ready
+tinx ws list --missing
+tinx ws list --active
+tinx p list
+tinx p list default
 ```
 
-Run directly from a provider reference and execute immediately:
+Workspace inventory uses a compact table with activity markers, status symbols, and shortened roots:
+
+```text
+NAME             ACTIVE   STATUS     ROOT
+-----------------------------------------
+my-space         *        ✓ ready    ./my-space
+my-workspace              ✓ ready    ./my-workspace
+dev                       ✗ missing  /tmp/.../dev
+default                   ✓ ready    (global)
+
+4 workspaces (3 ready, 1 missing)
+Active workspace: my-space
+```
+
+For quick checks or scripting:
+
+```text
+* my-space
+  my-workspace
+  default
+```
+
+Provider inventory is similarly compact:
+
+```text
+Scope: my-space
+Root: ./my-space
+Status: ✓ ready
+
+NAME      STATUS     PROVIDER             VERSION
+-----------------------------------------------
+lite-ci   ✓ ready    sourceplane/lite-ci  v0.2.25
+
+1 provider (1 ready)
+```
+
+Default status output is intentionally short:
+
+```text
+tinx workspace: my-space
+path: ./my-space
+shims: active
+
+providers:
+  lite-ci  sourceplane/lite-ci  v0.2.25  ready
+```
+
+For a one-line summary:
+
+```text
+my-space | 1 providers | shims active
+```
+
+Provider manifests can also contribute workspace session variables and extra PATH entries:
+
+```yaml
+spec:
+  env:
+    LITECI_CONFIG: ${provider_assets}/config
+  path:
+    - tools/bin
+```
+
+Supported interpolation keys include `${provider_ref}`, `${provider_home}`, `${provider_assets}`, `${provider_binary}`, `${workspace_root}`, and `${cwd}`.
+
+## Standalone Install
+
+`install` remains a low-level metadata and cache command. It does not execute providers.
+
+Install a provider into the default tinx home:
 
 ```bash
-tinx run sourceplane/lite-ci -- lite-ci run plan
+tinx install sourceplane/lite-ci as lite-ci
 ```
 
-If you omit `as <alias>`, tinx still installs the provider metadata into the default home. Use `tinx run <provider-ref> <capability>` for later invocation, or use `-- <entrypoint> ...` for one-shot dispatch.
+Execution still happens through a workspace shell:
+
+```bash
+tinx use my-workspace
+tinx p add sourceplane/lite-ci as lite-ci
+tinx -- lite-ci plan
+```
+
+Preferred modern UX:
+
+```bash
+tinx init
+tinx use dev
+tinx status
+
+tinx ws list
+tinx ws list --short
+tinx ws list --ready
+tinx ws list --missing
+tinx ws list --active
+tinx ws create dev
+tinx ws use dev
+tinx ws current
+tinx ws delete dev
+
+tinx p list
+tinx p add core/node
+tinx p remove node
+tinx p update
+```
+
+Legacy compatibility commands like `tinx add` still work, but the grouped `workspace` and `provider` commands are the preferred UX.
 
 ## CLI Reference
 
 ```bash
-tinx init <workspace-or-config> [-p <provider-source> [as <alias>]]...
+tinx init [workspace-or-config] [-p <provider-source> [as <alias>]]...
 tinx use <workspace> [-- command...]
-tinx list workspaces
-tinx list providers [workspace|default]
-tinx install <ref> [as <alias>] [--source <oci-layout>] [--tag <tag>] [--plain-http] [-- command...]
+tinx status
+tinx workspace list [--short] [--ready] [--missing] [--active]
+tinx workspace create [workspace-or-config] [-p <provider-source> [as <alias>]]...
+tinx workspace use <workspace> [-- command...]
+tinx workspace current
+tinx workspace delete <workspace>
+tinx ws <subcommand> ...
+tinx workspaces <subcommand> ...
+tinx providers <subcommand> ...
+tinx provider list [workspace|default]
+tinx provider add <provider> [as <alias>] [--plain-http]
+tinx provider remove <provider-or-alias>
+tinx provider update [provider-or-alias...]
+tinx p <subcommand> ...
+tinx add <provider> [as <alias>] [--plain-http]
+tinx [--workspace <workspace>] -- <command...>
+tinx [--workspace <workspace>] --
+tinx install <ref> [as <alias>] [--source <oci-layout>] [--tag <tag>] [--plain-http]
 tinx install <alias> <ref> [--source <oci-layout>] [--tag <tag>] [--plain-http]
-tinx run <provider-or-alias> [capability-or-args...] [--plain-http]
-tinx run <provider-ref> [--plain-http] -- <command...>
-tinx <alias> [capability-or-args...]
 tinx -- <command...>
 tinx pack [--manifest tinx.yaml] [--artifact-root <dir>] [--output oci] [--tag <tag>]
 tinx release [--manifest tinx.yaml] [--dist dist] [--output oci] [--main <go-main-pkg>] [--push <oci-ref>]
@@ -175,11 +325,11 @@ tinx version
 ## Configuration
 
 - Default runtime home: `~/.tinx` (or project-provided override)
-- Workspace runtime home: `<workspace>/.tinx`
+- Workspace runtime home: `<workspace>/.workspace`
 - Override runtime home per command:
 
 ```bash
-tinx --tinx-home /custom/path run <provider> <capability>
+tinx --tinx-home /custom/path --workspace my-workspace -- node build
 ```
 
 ## Security
@@ -196,12 +346,6 @@ make tidy
 make test
 make test-core
 ```
-
-Contribution and development details are documented in:
-
-- `implimentaion_context_spec.md`
-- `tinx_technical_specification.md`
-- `TEST_EXAMPLES.md`
 
 ## CNCF Alignment Notes
 
