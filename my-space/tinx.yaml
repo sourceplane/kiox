@@ -1,8 +1,0 @@
-apiVersion: tinx.io/v1
-kind: workspace
-workspace: my-space
-metadata:
-    name: my-space
-providers:
-    lite-ci:
-        source: sourceplane/lite-ci:v0.2.25
