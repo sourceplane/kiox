@@ -347,12 +347,6 @@ make test
 make test-core
 ```
 
-Contribution and development details are documented in:
-
-- `implimentaion_context_spec.md`
-- `tinx_technical_specification.md`
-- `TEST_EXAMPLES.md`
-
 ## CNCF Alignment Notes
 
 `tinx` follows common cloud-native tooling conventions:
