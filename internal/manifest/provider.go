@@ -38,6 +38,8 @@ type ProviderSpec struct {
 	Entrypoint   string                `yaml:"entrypoint" json:"entrypoint"`
 	Platforms    []Platform            `yaml:"platforms" json:"platforms"`
 	Capabilities map[string]Capability `yaml:"capabilities,omitempty" json:"capabilities,omitempty"`
+	Env          map[string]string     `yaml:"env,omitempty" json:"env,omitempty"`
+	Path         []string              `yaml:"path,omitempty" json:"path,omitempty"`
 	Layers       Layers                `yaml:"layers,omitempty" json:"layers,omitempty"`
 }
 
@@ -85,6 +87,17 @@ func (p *Provider) Normalize() error {
 	for i := range p.Spec.Platforms {
 		p.Spec.Platforms[i].Binary = filepath.ToSlash(p.Spec.Platforms[i].Binary)
 	}
+	if len(p.Spec.Path) > 0 {
+		normalized := make([]string, 0, len(p.Spec.Path))
+		for _, entry := range p.Spec.Path {
+			trimmed := strings.TrimSpace(entry)
+			if trimmed == "" {
+				continue
+			}
+			normalized = append(normalized, filepath.ToSlash(trimmed))
+		}
+		p.Spec.Path = normalized
+	}
 	return p.Validate()
 }
 
@@ -126,6 +139,20 @@ func (p Provider) Validate() error {
 			return fmt.Errorf("duplicate platform %s", key)
 		}
 		seen[key] = struct{}{}
+	}
+	for key := range p.Spec.Env {
+		trimmedKey := strings.TrimSpace(key)
+		if trimmedKey == "" {
+			return errors.New("spec.env keys must not be empty")
+		}
+		if strings.HasPrefix(strings.ToUpper(trimmedKey), "TINX_") {
+			return fmt.Errorf("spec.env key %q must not use reserved TINX_ prefix", trimmedKey)
+		}
+	}
+	for _, entry := range p.Spec.Path {
+		if strings.TrimSpace(entry) == "" {
+			return errors.New("spec.path entries must not be empty")
+		}
 	}
 	return nil
 }

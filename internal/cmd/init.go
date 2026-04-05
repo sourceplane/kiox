@@ -134,7 +134,10 @@ func buildInitWorkspaceTarget(input initCommandInput) (*workspaceTarget, error) 
 		return nil, fmt.Errorf("stat workspace target: %w", err)
 	}
 	if len(input.Providers) == 0 {
-		return nil, fmt.Errorf("workspace init requires at least one provider or an existing config file")
+		lowerTarget := strings.ToLower(absTarget)
+		if strings.HasSuffix(lowerTarget, ".yaml") || strings.HasSuffix(lowerTarget, ".yml") {
+			return nil, fmt.Errorf("workspace init requires a directory target when no providers are supplied")
+		}
 	}
 	config := workspace.Config{
 		Workspace: filepath.Base(absTarget),

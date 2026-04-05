@@ -214,7 +214,7 @@ func inspectWorkspaceScope(root string, registeredNames []string, activeRoot str
 	}
 
 	if includeProviders {
-		providers, err := inspectProviderInventory(scope.Home)
+		providers, err := inspectProviderInventory(scope.Home, true)
 		if err != nil {
 			return inventoryScope{}, err
 		}
@@ -231,7 +231,7 @@ func inspectDefaultScope(globalHome string, includeProviders bool) (inventorySco
 		Status: "ready",
 	}
 	if includeProviders {
-		providers, err := inspectProviderInventory(globalHome)
+		providers, err := inspectProviderInventory(globalHome, false)
 		if err != nil {
 			return inventoryScope{}, err
 		}
@@ -240,7 +240,7 @@ func inspectDefaultScope(globalHome string, includeProviders bool) (inventorySco
 	return scope, nil
 }
 
-func inspectProviderInventory(home string) ([]providerInventory, error) {
+func inspectProviderInventory(home string, workspaceScope bool) ([]providerInventory, error) {
 	providers, err := state.ListInstalledProviders(home)
 	if err != nil {
 		return nil, err
@@ -272,7 +272,7 @@ func inspectProviderInventory(home string) ([]providerInventory, error) {
 			Version:    fallbackDisplay(meta.Version),
 			Status:     "ready",
 			Runtime:    fallbackDisplay(strings.TrimSpace(meta.Runtime)),
-			Invoke:     providerInvokeHint(meta, providerAliases),
+			Invoke:     providerInvokeHint(meta, providerAliases, workspaceScope),
 		})
 	}
 
@@ -285,7 +285,7 @@ func inspectProviderInventory(home string) ([]providerInventory, error) {
 			Version:    "-",
 			Status:     "missing",
 			Runtime:    "-",
-			Invoke:     missingProviderInvokeHint(ref, providerAliases),
+			Invoke:     missingProviderInvokeHint(ref, providerAliases, workspaceScope),
 		})
 	}
 
@@ -378,10 +378,13 @@ func providerReference(meta state.ProviderMetadata) string {
 	return strings.TrimSpace(meta.Namespace) + "/" + strings.TrimSpace(meta.Name)
 }
 
-func providerInvokeHint(meta state.ProviderMetadata, aliases []string) string {
+func providerInvokeHint(meta state.ProviderMetadata, aliases []string, workspaceScope bool) string {
 	target := providerReference(meta)
 	if len(aliases) > 0 {
 		target = aliases[0]
+	}
+	if workspaceScope {
+		return "tinx -- " + target + " ..."
 	}
 	prefix := "tinx "
 	if len(aliases) == 0 {
@@ -390,7 +393,13 @@ func providerInvokeHint(meta state.ProviderMetadata, aliases []string) string {
 	return prefix + target + " <capability>"
 }
 
-func missingProviderInvokeHint(ref string, aliases []string) string {
+func missingProviderInvokeHint(ref string, aliases []string, workspaceScope bool) string {
+	if workspaceScope {
+		if len(aliases) > 0 {
+			return "tinx -- " + aliases[0] + " ..."
+		}
+		return "tinx -- " + ref + " ..."
+	}
 	if len(aliases) > 0 {
 		return "tinx " + aliases[0] + " ..."
 	}

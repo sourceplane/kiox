@@ -21,7 +21,8 @@ import (
 )
 
 type rootOptions struct {
-	Home string
+	Home      string
+	Workspace string
 }
 
 func Execute(ctx context.Context) error {
@@ -29,7 +30,10 @@ func Execute(ctx context.Context) error {
 }
 
 func NewRootCommand() *cobra.Command {
-	opts := &rootOptions{}
+	return newRootCommand(&rootOptions{})
+}
+
+func newRootCommand(opts *rootOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "tinx",
 		Short:         "OCI-native provider runtime and packager",
@@ -46,9 +50,12 @@ func NewRootCommand() *cobra.Command {
 			return runAlias(cmd, opts, args)
 		},
 	}
-	cmd.PersistentFlags().StringVar(&opts.Home, "tinx-home", "", "override the tinx home directory")
+	cmd.PersistentFlags().StringVar(&opts.Home, "tinx-home", opts.Home, "override the tinx home directory")
+	cmd.PersistentFlags().StringVarP(&opts.Workspace, "workspace", "w", opts.Workspace, "select the workspace for workspace-shell commands")
 	cmd.SetVersionTemplate("tinx {{.Version}}\n")
 	cmd.AddCommand(newInitCommand(opts))
+	cmd.AddCommand(newWorkspaceCommand(opts))
+	cmd.AddCommand(newAddCommand(opts))
 	cmd.AddCommand(newUseCommand(opts))
 	cmd.AddCommand(newListCommand(opts))
 	cmd.AddCommand(newInstallCommand(opts))
@@ -104,12 +111,24 @@ func executeProviderCapability(cmd *cobra.Command, home, providerRef string, pro
 		return err
 	}
 	providerHome := providerHomeFromBinary(binaryPath)
+	envOverrides, pathEntries, err := tinxruntime.ResolveProviderEnvironment(tinxruntime.ProviderEnvironmentSpec{
+		Home:          home,
+		WorkspaceRoot: workspaceRootForHome(home),
+		Alias:         aliasForProviderInvocation(providerRef, providerMeta),
+		BinaryPath:    binaryPath,
+		Metadata:      providerMeta,
+	})
+	if err != nil {
+		return err
+	}
 	return tinxruntime.Execute(tinxruntime.ExecOptions{
 		BinaryPath:   binaryPath,
 		Args:         args,
 		WorkingDir:   mustGetwd(),
 		ProviderHome: providerHome,
 		TinxVersion:  version.String(),
+		EnvOverrides: envOverrides,
+		PathEntries:  pathEntries,
 		Stdout:       cmd.OutOrStdout(),
 		Stderr:       cmd.ErrOrStderr(),
 		Stdin:        os.Stdin,
@@ -283,23 +302,44 @@ func writeLine(w io.Writer, format string, args ...any) {
 	fmt.Fprintf(w, format+"\n", args...)
 }
 
-func extractHomeArg(args []string) (string, []string, error) {
+func aliasForProviderInvocation(providerRef string, providerMeta state.ProviderMetadata) string {
+	if !strings.Contains(providerRef, "/") {
+		return strings.TrimSpace(providerRef)
+	}
+	return strings.TrimSpace(providerMeta.Name)
+}
+
+func extractRootArgs(args []string) (rootOptions, []string, error) {
+	opts := rootOptions{}
 	remaining := make([]string, 0, len(args))
-	home := ""
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
+		if arg == "--" {
+			remaining = append(remaining, args[i:]...)
+			break
+		}
 		switch {
 		case strings.HasPrefix(arg, "--tinx-home="):
-			home = strings.TrimPrefix(arg, "--tinx-home=")
+			opts.Home = strings.TrimPrefix(arg, "--tinx-home=")
 		case arg == "--tinx-home":
 			if i+1 >= len(args) {
-				return "", nil, fmt.Errorf("missing value for --tinx-home")
+				return rootOptions{}, nil, fmt.Errorf("missing value for --tinx-home")
 			}
-			home = args[i+1]
+			opts.Home = args[i+1]
+			i++
+		case strings.HasPrefix(arg, "--workspace="):
+			opts.Workspace = strings.TrimPrefix(arg, "--workspace=")
+		case strings.HasPrefix(arg, "-w="):
+			opts.Workspace = strings.TrimPrefix(arg, "-w=")
+		case arg == "--workspace" || arg == "-w":
+			if i+1 >= len(args) {
+				return rootOptions{}, nil, fmt.Errorf("missing value for --workspace")
+			}
+			opts.Workspace = args[i+1]
 			i++
 		default:
 			remaining = append(remaining, arg)
 		}
 	}
-	return home, remaining, nil
+	return opts, remaining, nil
 }

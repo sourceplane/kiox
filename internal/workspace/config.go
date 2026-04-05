@@ -17,7 +17,7 @@ const (
 	KindWorkspaceLock = "WorkspaceLock"
 	ManifestName      = "tinx.yaml"
 	LockName          = "tinx.lock"
-	StateDirName      = ".tinx"
+	StateDirName      = ".workspace"
 )
 
 var ManifestNames = []string{
@@ -234,6 +234,18 @@ func Discover(startDir string) (*Discovery, error) {
 
 func Home(root string) string {
 	return filepath.Join(root, StateDirName)
+}
+
+func EnvPath(root string) string {
+	return filepath.Join(Home(root), "env")
+}
+
+func PathPath(root string) string {
+	return filepath.Join(Home(root), "path")
+}
+
+func BinPath(root string) string {
+	return filepath.Join(Home(root), "bin")
 }
 
 func LockPath(root string) string {

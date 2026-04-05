@@ -25,12 +25,7 @@ func TestInitWorkspaceFromFlagsAndDispatchWithActiveWorkspace(t *testing.T) {
 	nodeLayout := releaseProviderLayout(t, globalHome, nodeProject)
 	workspaceRoot := filepath.Join(tempDir, "my-workspace")
 
-	initBuf := runRootCommand(t, []string{
-		"--tinx-home", globalHome,
-		"init", workspaceRoot,
-		"-p", liteCILayout, "as", "lite-ci",
-		"-p", nodeLayout, "as", "node",
-	})
+	initBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "init", workspaceRoot})
 	if !bytes.Contains(initBuf.Bytes(), []byte("initialized workspace my-workspace")) {
 		t.Fatalf("unexpected init output: %s", initBuf.String())
 	}
@@ -41,13 +36,25 @@ func TestInitWorkspaceFromFlagsAndDispatchWithActiveWorkspace(t *testing.T) {
 		t.Fatalf("expected workspace lock file: %v", err)
 	}
 
-	useBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "use", workspaceRoot})
-	if !bytes.Contains(useBuf.Bytes(), []byte("active workspace: my-workspace")) {
-		t.Fatalf("unexpected use output: %s", useBuf.String())
+	activateBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "workspace", "activate", workspaceRoot})
+	if !bytes.Contains(activateBuf.Bytes(), []byte("active workspace: my-workspace")) {
+		t.Fatalf("unexpected activate output: %s", activateBuf.String())
 	}
 
-	runBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "--", "lite-ci", "run", "plan", "--", "node", "deploy"})
-	assertWorkspaceDispatchOutput(t, runBuf)
+	runRootCommand(t, []string{"--tinx-home", globalHome, "add", liteCILayout, "as", "lite-ci"})
+	runRootCommand(t, []string{"--tinx-home", globalHome, "add", nodeLayout, "as", "node"})
+
+	runBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "--", "lite-ci", "plan", "--", "node", "build"})
+	assertWorkspaceShellOutput(t, runBuf)
+	for _, path := range []string{
+		filepath.Join(workspaceRoot, ".workspace", "env"),
+		filepath.Join(workspaceRoot, ".workspace", "path"),
+		filepath.Join(workspaceRoot, ".workspace", "providers"),
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("expected workspace runtime artifact %s: %v", path, err)
+		}
+	}
 
 	activeWorkspace, err := state.LoadActiveWorkspace(globalHome)
 	if err != nil {
@@ -97,8 +104,38 @@ providers:
 		t.Fatalf("expected materialized manifest aliases, got %#v", loadedConfig.ProviderAliases())
 	}
 
-	runBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "use", workspaceRoot, "--", "lite-ci", "run", "plan", "--", "node", "deploy"})
-	assertWorkspaceDispatchOutput(t, runBuf)
+	runBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "--workspace", workspaceRoot, "--", "lite-ci", "plan", "--", "node", "build"})
+	assertWorkspaceShellOutput(t, runBuf)
+}
+
+func TestInteractiveWorkspaceShellUsesWorkspaceEnvironment(t *testing.T) {
+	tempDir := t.TempDir()
+	globalHome := filepath.Join(tempDir, ".tinx-global")
+	liteCIProject := createLiteCIProviderProject(t, filepath.Join(tempDir, "lite-ci-provider"))
+	liteCILayout := releaseProviderLayout(t, globalHome, liteCIProject)
+	workspaceRoot := filepath.Join(tempDir, "interactive-workspace")
+
+	runRootCommand(t, []string{"--tinx-home", globalHome, "init", workspaceRoot})
+	runRootCommand(t, []string{"--tinx-home", globalHome, "workspace", "activate", workspaceRoot})
+	runRootCommand(t, []string{"--tinx-home", globalHome, "add", liteCILayout, "as", "lite-ci"})
+
+	fakeShell := filepath.Join(tempDir, "fake-shell")
+	script := "#!/bin/sh\nset -eu\nprintf 'shell-root=%s\\n' \"$TINX_WORKSPACE_ROOT\"\nprintf 'shell-env-file=%s\\n' \"$TINX_WORKSPACE_ENV_FILE\"\nprintf 'shell-path=%s\\n' \"$PATH\"\n"
+	if err := os.WriteFile(fakeShell, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SHELL", fakeShell)
+
+	shellBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "--"})
+	if !bytes.Contains(shellBuf.Bytes(), []byte("shell-root="+workspaceRoot)) {
+		t.Fatalf("expected interactive shell to inherit workspace root, got: %s", shellBuf.String())
+	}
+	if !bytes.Contains(shellBuf.Bytes(), []byte(filepath.Join(workspaceRoot, ".workspace", "env"))) {
+		t.Fatalf("expected interactive shell env file, got: %s", shellBuf.String())
+	}
+	if !bytes.Contains(shellBuf.Bytes(), []byte(filepath.Join(workspaceRoot, ".workspace", "bin"))) {
+		t.Fatalf("expected interactive shell path to include workspace shims, got: %s", shellBuf.String())
+	}
 }
 
 func TestInstallRefAsAliasDispatchesProviderCommand(t *testing.T) {
@@ -136,13 +173,16 @@ func TestRunRefDispatchesUsingBinaryName(t *testing.T) {
 	}
 }
 
-func assertWorkspaceDispatchOutput(t *testing.T, buf *bytes.Buffer) {
+func assertWorkspaceShellOutput(t *testing.T, buf *bytes.Buffer) {
 	t.Helper()
-	if !bytes.Contains(buf.Bytes(), []byte("lite-ci-args=run plan -- node deploy")) {
+	if !bytes.Contains(buf.Bytes(), []byte("lite-ci-args=plan -- node build")) {
 		t.Fatalf("expected lite-ci provider output, got: %s", buf.String())
 	}
-	if !bytes.Contains(buf.Bytes(), []byte("node-args=deploy")) {
+	if !bytes.Contains(buf.Bytes(), []byte("node-args=build")) {
 		t.Fatalf("expected node provider output, got: %s", buf.String())
+	}
+	if !bytes.Contains(buf.Bytes(), []byte("node-env=acme/node")) {
+		t.Fatalf("expected provider env to be loaded into workspace shell, got: %s", buf.String())
 	}
 }
 
@@ -159,6 +199,7 @@ import (
 
 func main() {
 	args := os.Args[1:]
+	fmt.Printf("lite-ci-env=%s\n", os.Getenv("LITE_CI_PROVIDER_REF"))
 	fmt.Printf("lite-ci-args=%s\n", strings.Join(args, " "))
 	for index, arg := range args {
 		if arg != "--" {
@@ -192,6 +233,7 @@ import (
 )
 
 func main() {
+	fmt.Printf("node-env=%s\n", os.Getenv("NODE_PROVIDER_REF"))
 	fmt.Printf("node-args=%s\n", strings.Join(os.Args[1:], " "))
 }
 `)
@@ -206,25 +248,29 @@ func createCapabilityProviderProject(t *testing.T, dir, namespace, name, capabil
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(goMod), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	manifest := fmt.Sprintf(`apiVersion: tinx.io/v1
-kind: Provider
-
-metadata:
-  namespace: %s
-  name: %s
-  version: v0.1.0
-
-spec:
-  runtime: binary
-  entrypoint: %s
-  platforms:
-    - os: %s
-      arch: %s
-      binary: bin/%s/%s/%s
-  capabilities:
-    %s:
-      description: test capability
-`, namespace, name, name, goruntime.GOOS, goruntime.GOARCH, goruntime.GOOS, goruntime.GOARCH, name, capability)
+	manifest := strings.Join([]string{
+		"apiVersion: tinx.io/v1",
+		"kind: Provider",
+		"",
+		"metadata:",
+		fmt.Sprintf("  namespace: %s", namespace),
+		fmt.Sprintf("  name: %s", name),
+		"  version: v0.1.0",
+		"",
+		"spec:",
+		"  runtime: binary",
+		fmt.Sprintf("  entrypoint: %s", name),
+		"  env:",
+		fmt.Sprintf("    %s: ${provider_ref}", manifestEnvName(name)),
+		"  platforms:",
+		fmt.Sprintf("    - os: %s", goruntime.GOOS),
+		fmt.Sprintf("      arch: %s", goruntime.GOARCH),
+		fmt.Sprintf("      binary: bin/%s/%s/%s", goruntime.GOOS, goruntime.GOARCH, name),
+		"  capabilities:",
+		fmt.Sprintf("    %s:", capability),
+		"      description: test capability",
+		"",
+	}, "\n")
 	if err := os.WriteFile(filepath.Join(dir, "tinx.yaml"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -232,6 +278,11 @@ spec:
 		t.Fatal(err)
 	}
 	return dir
+}
+
+func manifestEnvName(name string) string {
+	upper := strings.ToUpper(strings.ReplaceAll(name, "-", "_"))
+	return upper + "_PROVIDER_REF"
 }
 
 func releaseProviderLayout(t *testing.T, home, providerDir string) string {

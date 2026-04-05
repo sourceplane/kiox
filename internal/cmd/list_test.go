@@ -90,6 +90,7 @@ func TestListProvidersSupportsWorkspaceAndDefaultScopes(t *testing.T) {
 		"Type: workspace",
 		"lite-ci",
 		"acme/lite-ci",
+		"tinx -- lite-ci ...",
 	} {
 		if !strings.Contains(workspaceOutput, expected) {
 			t.Fatalf("expected %q in workspace provider output, got:\n%s", expected, workspaceOutput)
