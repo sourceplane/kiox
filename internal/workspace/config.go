@@ -49,9 +49,8 @@ type Spec struct {
 }
 
 type Provider struct {
-	Source    string            `yaml:"source,omitempty"`
-	Inputs    map[string]string `yaml:"inputs,omitempty"`
-	PlainHTTP bool              `yaml:"plainHTTP,omitempty"`
+	Source    string `yaml:"source,omitempty"`
+	PlainHTTP bool   `yaml:"plainHTTP,omitempty"`
 }
 
 type Discovery struct {
@@ -68,11 +67,10 @@ type LockFile struct {
 }
 
 type LockedProvider struct {
-	Alias    string            `yaml:"alias"`
-	Provider string            `yaml:"provider"`
-	Source   string            `yaml:"source"`
-	Version  string            `yaml:"version"`
-	Inputs   map[string]string `yaml:"inputs,omitempty"`
+	Alias    string `yaml:"alias"`
+	Provider string `yaml:"provider"`
+	Source   string `yaml:"source"`
+	Version  string `yaml:"version"`
 }
 
 func (p *Provider) UnmarshalYAML(node *yaml.Node) error {

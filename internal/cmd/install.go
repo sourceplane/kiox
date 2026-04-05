@@ -8,23 +8,20 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/sourceplane/tinx/internal/gha"
 	"github.com/sourceplane/tinx/internal/oci"
 	"github.com/sourceplane/tinx/internal/resolver"
 	cmdruntime "github.com/sourceplane/tinx/internal/runtime"
 	"github.com/sourceplane/tinx/internal/state"
-	"github.com/sourceplane/tinx/pkg/version"
 )
 
 func newInstallCommand(root *rootOptions) *cobra.Command {
 	var source string
 	var tag string
 	var plainHTTP bool
-	var inputValues []string
 
 	cmd := &cobra.Command{
 		Use:   "install <ref> [as <alias>] [-- command...]",
-		Short: "Install provider metadata from an OCI layout, registry reference, or GitHub Action",
+		Short: "Install provider metadata from an OCI layout or registry reference",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			beforeDash, afterDash := splitArgsAtDash(cmd, args)
@@ -36,37 +33,14 @@ func newInstallCommand(root *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			installInputs, err := parseInstallInputs(inputValues)
-			if err != nil {
-				return err
-			}
 
 			resolvedTarget := resolver.ResolveProviderSource(installTarget)
 			if source == "" {
-				var installed state.ProviderMetadata
-				if gha.IsReference(resolvedTarget) {
-					if len(installInputs) > 0 && alias == "" {
-						return fmt.Errorf("GitHub Action install-time inputs require an alias so the configured provider can be stored")
-					}
-					if alias != "" {
-						installed, err = gha.InstallAlias(cmd.Context(), home, resolvedTarget, gha.InstallOptions{
-							Alias:       alias,
-							Inputs:      installInputs,
-							WorkingDir:  mustGetwd(),
-							TinxVersion: version.String(),
-							Stdout:      cmd.OutOrStdout(),
-							Stderr:      cmd.ErrOrStderr(),
-							Stdin:       os.Stdin,
-						}, cmd.ErrOrStderr())
-					} else {
-						installed, err = gha.Install(cmd.Context(), home, resolvedTarget, cmd.ErrOrStderr())
-					}
-				} else {
-					if len(installInputs) > 0 {
-						return fmt.Errorf("--input is only supported for GitHub Action installs")
-					}
-					installed, err = oci.InstallRemote(cmd.Context(), home, resolvedTarget, alias, plainHTTP, cmd.ErrOrStderr())
+				if resolver.HasSourceScheme(resolvedTarget) {
+					return unsupportedProviderSourceError(resolvedTarget, "expected an OCI registry reference or --source <oci-layout>")
 				}
+				var installed state.ProviderMetadata
+				installed, err = oci.InstallRemote(cmd.Context(), home, resolvedTarget, alias, plainHTTP, cmd.ErrOrStderr())
 				if err != nil {
 					return err
 				}
@@ -87,9 +61,6 @@ func newInstallCommand(root *rootOptions) *cobra.Command {
 					Stderr:     cmd.ErrOrStderr(),
 					Stdin:      os.Stdin,
 				})
-			}
-			if len(installInputs) > 0 {
-				return fmt.Errorf("--input is only supported for GitHub Action installs")
 			}
 
 			if _, _, err := splitProviderRef(installTarget); err != nil {
@@ -131,7 +102,6 @@ func newInstallCommand(root *rootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&source, "source", "", "path to a local OCI image layout")
 	cmd.Flags().StringVar(&tag, "tag", "", "OCI tag inside the local layout")
 	cmd.Flags().BoolVar(&plainHTTP, "plain-http", false, "use plain HTTP for registry pull/install")
-	cmd.Flags().StringArrayVar(&inputValues, "input", nil, "configure a GitHub Action input at install time (name=value)")
 	return cmd
 }
 
@@ -140,7 +110,7 @@ func filterInstallArgs(args []string) []string {
 	for index := 0; index < len(args); index++ {
 		arg := args[index]
 		switch {
-		case arg == "--source" || arg == "--tag" || arg == "--input":
+		case arg == "--source" || arg == "--tag":
 			if index+1 < len(args) {
 				index++
 			}
@@ -151,7 +121,7 @@ func filterInstallArgs(args []string) []string {
 					index++
 				}
 			}
-		case strings.HasPrefix(arg, "--source=") || strings.HasPrefix(arg, "--tag=") || strings.HasPrefix(arg, "--input=") || strings.HasPrefix(arg, "--plain-http="):
+		case strings.HasPrefix(arg, "--source=") || strings.HasPrefix(arg, "--tag=") || strings.HasPrefix(arg, "--plain-http="):
 		default:
 			filtered = append(filtered, arg)
 		}
@@ -179,7 +149,7 @@ func looksLikeProviderSource(value string) bool {
 	if trimmed == "" {
 		return false
 	}
-	if gha.IsReference(trimmed) || isOCIReference(trimmed) {
+	if resolver.HasSourceScheme(trimmed) || isOCIReference(trimmed) {
 		return true
 	}
 	if resolver.ResolveProviderSource(trimmed) != trimmed {
@@ -189,19 +159,4 @@ func looksLikeProviderSource(value string) bool {
 		return true
 	}
 	return false
-}
-
-func parseInstallInputs(values []string) (map[string]string, error) {
-	if len(values) == 0 {
-		return nil, nil
-	}
-	inputs := make(map[string]string, len(values))
-	for _, raw := range values {
-		parts := strings.SplitN(raw, "=", 2)
-		if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" {
-			return nil, fmt.Errorf("GitHub Action inputs must use name=value syntax, got %q", raw)
-		}
-		inputs[strings.TrimSpace(parts[0])] = parts[1]
-	}
-	return inputs, nil
 }

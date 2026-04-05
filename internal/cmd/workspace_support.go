@@ -14,7 +14,6 @@ import (
 	cmdruntime "github.com/sourceplane/tinx/internal/runtime"
 	"github.com/sourceplane/tinx/internal/state"
 	"github.com/sourceplane/tinx/internal/workspace"
-	"github.com/sourceplane/tinx/pkg/version"
 )
 
 type workspaceTarget struct {
@@ -115,12 +114,7 @@ func runWorkspaceCommand(cmd *cobra.Command, root *rootOptions, command []string
 		return fmt.Errorf("no active workspace; run tinx use <workspace> first or execute inside a workspace")
 	}
 	result, err := workspace.Sync(cmd.Context(), target.Root, target.Config, workspace.SyncOptions{
-		Out:         cmd.ErrOrStderr(),
-		Stdout:      cmd.OutOrStdout(),
-		Stderr:      cmd.ErrOrStderr(),
-		Stdin:       os.Stdin,
-		WorkingDir:  mustGetwd(),
-		TinxVersion: version.String(),
+		Out: cmd.ErrOrStderr(),
 	})
 	if err != nil {
 		return err

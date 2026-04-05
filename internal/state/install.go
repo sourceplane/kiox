@@ -16,21 +16,12 @@ type ProviderMetadata struct {
 	Homepage               string            `json:"homepage,omitempty"`
 	License                string            `json:"license,omitempty"`
 	Runtime                string            `json:"runtime"`
-	InvocationStyle        string            `json:"invocationStyle,omitempty"`
 	Entrypoint             string            `json:"entrypoint"`
-	DefaultCapability      string            `json:"defaultCapability,omitempty"`
 	Capabilities           []string          `json:"capabilities,omitempty"`
 	CapabilityDescriptions map[string]string `json:"capabilityDescriptions,omitempty"`
-	Inputs                 map[string]Input  `json:"inputs,omitempty"`
 	Platforms              []PlatformSummary `json:"platforms,omitempty"`
 	Source                 Source            `json:"source"`
 	InstalledAt            time.Time         `json:"installedAt"`
-}
-
-type Input struct {
-	Description string `json:"description,omitempty"`
-	Required    bool   `json:"required,omitempty"`
-	Default     string `json:"default,omitempty"`
 }
 
 type PlatformSummary struct {
@@ -39,19 +30,11 @@ type PlatformSummary struct {
 }
 
 type Source struct {
-	Driver     string `json:"driver,omitempty"`
 	LayoutPath string `json:"layoutPath"`
-	SourcePath string `json:"sourcePath,omitempty"`
 	Tag        string `json:"tag"`
 	Ref        string `json:"ref,omitempty"`
-	Repo       string `json:"repo,omitempty"`
-	Subpath    string `json:"subpath,omitempty"`
-	Revision   string `json:"revision,omitempty"`
-	Inputs     map[string]string `json:"inputs,omitempty"`
 	PlainHTTP  bool   `json:"plainHTTP,omitempty"`
 }
-
-const InvocationStylePassthrough = "passthrough"
 
 func ProviderRoot(home, namespace, name string) string {
 	return filepath.Join(home, "providers", namespace, name)

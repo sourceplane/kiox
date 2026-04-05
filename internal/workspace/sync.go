@@ -2,24 +2,19 @@ package workspace
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/sourceplane/tinx/internal/gha"
 	"github.com/sourceplane/tinx/internal/oci"
 	"github.com/sourceplane/tinx/internal/resolver"
 	"github.com/sourceplane/tinx/internal/state"
 )
 
 type SyncOptions struct {
-	Out         io.Writer
-	Stdout      io.Writer
-	Stderr      io.Writer
-	Stdin       *os.File
-	WorkingDir  string
-	TinxVersion string
+	Out io.Writer
 }
 
 type SyncResult struct {
@@ -55,7 +50,6 @@ func Sync(ctx context.Context, root string, config Config, opts SyncOptions) (Sy
 			Provider: providerRef,
 			Source:   source,
 			Version:  installed.Version,
-			Inputs:   cloneStringMap(provider.Inputs),
 		})
 	}
 	if err := state.SaveAliases(home, result.Aliases); err != nil {
@@ -71,16 +65,8 @@ func installWorkspaceProvider(ctx context.Context, home, alias, source string, p
 	if layoutPath, ok := localLayoutPath(source); ok {
 		return oci.InstallMetadata(layoutPath, "", home, alias, opts.Out)
 	}
-	if gha.IsReference(source) {
-		return gha.InstallAlias(ctx, home, source, gha.InstallOptions{
-			Alias:       alias,
-			Inputs:      cloneStringMap(provider.Inputs),
-			WorkingDir:  opts.WorkingDir,
-			TinxVersion: opts.TinxVersion,
-			Stdout:      opts.Stdout,
-			Stderr:      opts.Stderr,
-			Stdin:       opts.Stdin,
-		}, opts.Out)
+	if resolver.HasSourceScheme(source) {
+		return state.ProviderMetadata{}, fmt.Errorf("unsupported provider source %q: expected an OCI registry reference or local OCI layout", source)
 	}
 	return oci.InstallRemote(ctx, home, source, alias, provider.PlainHTTP, opts.Out)
 }
@@ -123,15 +109,4 @@ func localLayoutPath(source string) (string, bool) {
 		return "", false
 	}
 	return absPath, true
-}
-
-func cloneStringMap(values map[string]string) map[string]string {
-	if len(values) == 0 {
-		return nil
-	}
-	copyValues := make(map[string]string, len(values))
-	for key, value := range values {
-		copyValues[key] = value
-	}
-	return copyValues
 }

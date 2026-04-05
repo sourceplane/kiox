@@ -12,7 +12,7 @@ func TestResolveProviderSource(t *testing.T) {
 		{name: "short provider ref with tag", ref: "sourceplane/lite-ci:v1", want: "ghcr.io/sourceplane/lite-ci:v1"},
 		{name: "explicit registry ref", ref: "ghcr.io/sourceplane/lite-ci:v1", want: "ghcr.io/sourceplane/lite-ci:v1"},
 		{name: "localhost registry ref", ref: "localhost/tinx/provider:v1", want: "localhost/tinx/provider:v1"},
-		{name: "gha ref", ref: "gha://acme/setup@v1", want: "gha://acme/setup@v1"},
+		{name: "scheme ref", ref: "custom://acme/setup@v1", want: "custom://acme/setup@v1"},
 	}
 
 	for _, test := range tests {
