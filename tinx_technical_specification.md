@@ -11,34 +11,6 @@ tinx is a CLI toolchain designed for the lifecycle management of OCI-native prov
 - **Sub-second Installs**: Metadata-first pulling for instant discovery.
 - **Language Agnostic**: Binary-based execution contract.
 
-### Experimental Compatibility Layer
-
-In addition to OCI-native providers, tinx now includes an experimental `gha://` compatibility layer.
-This layer treats a GitHub Action repository as a provider source, clones it into the tinx cache, synthesizes provider metadata locally, and executes supported runtimes through the normal `tinx run` flow.
-
-Initial scope is intentionally narrow:
-
-- Composite actions
-- Node actions executed with the system `node` already available on `PATH`
-- Shell `run:` steps inside composite actions
-- `GITHUB_ENV`, `GITHUB_PATH`, `GITHUB_OUTPUT`, and `GITHUB_STATE` support
-- Cached action source and runtime state under the provider home
-
-Install-time provider materialization:
-
-- `tinx install <alias> gha://... --input name=value` creates an alias-scoped installed provider instead of only caching the source repository
-- Install-time inputs are persisted on the installed provider and used as the default bootstrap configuration for later runs
-- If the bootstrap execution adds exactly one managed executable on the action-controlled `PATH`, tinx promotes that executable into a local binary provider entrypoint
-- Promoted providers are materialized under the normal provider home with a generated local `tinx.yaml` and passthrough invocation semantics
-- If bootstrap does not produce a single unambiguous managed executable, tinx preserves the provider as an action-backed runtime rather than guessing
-- The GHA runtime exposes a stable `tinx` shim on `PATH` so actions can invoke tinx recursively when needed
-
-Current non-goals for the compatibility layer:
-
-- Docker actions
-- Nested `uses:` steps inside composite actions
-- tinx-managed Node provisioning (a future native provider can supply the Node runtime later)
-
 ## 2. The tinx.yaml Contract
 
 The tinx.yaml file is the source of truth for a provider. It follows a Kubernetes-style resource manifest.

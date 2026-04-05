@@ -387,14 +387,7 @@ func providerInvokeHint(meta state.ProviderMetadata, aliases []string) string {
 	if len(aliases) == 0 {
 		prefix = "tinx run "
 	}
-	switch {
-	case meta.InvocationStyle == state.InvocationStylePassthrough:
-		return prefix + target + " [args...]"
-	case strings.TrimSpace(meta.DefaultCapability) != "":
-		return prefix + target + " [args...]"
-	default:
-		return prefix + target + " <capability>"
-	}
+	return prefix + target + " <capability>"
 }
 
 func missingProviderInvokeHint(ref string, aliases []string) string {

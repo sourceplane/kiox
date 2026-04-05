@@ -43,7 +43,7 @@ func newDispatchProviderCommand(root *rootOptions) *cobra.Command {
 				writeCapabilityHelp(cmd.OutOrStdout(), providerRef, providerRef, invocation.capability, providerMeta)
 				return nil
 			}
-			if len(invocation.args) == 0 && providerMeta.InvocationStyle != state.InvocationStylePassthrough {
+			if len(invocation.args) == 0 {
 				return fmt.Errorf("provider %s requires a capability", providerRef)
 			}
 			return executeProviderCapability(cmd, home, providerRef, providerMeta, invocation.args)

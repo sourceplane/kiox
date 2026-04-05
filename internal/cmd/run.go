@@ -18,7 +18,7 @@ func newRunCommand(root *rootOptions) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "run <provider-or-alias> [capability] [args...]",
-		Short: "Execute a provider capability or GitHub Action from an alias, installed provider, or remote reference",
+		Short: "Execute a provider capability from an alias, installed provider, or remote reference",
 		FParseErrWhitelist: cobra.FParseErrWhitelist{
 			UnknownFlags: true,
 		},

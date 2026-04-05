@@ -59,7 +59,7 @@ Expected output includes:
 - `installed sourceplane/echo-provider@v0.1.0`
 - `capability=plan`
 
-## GitHub Actions pipelines
+## CI pipelines
 
 - `release.yml`
   - Trigger: tag push (`v*`) or manual

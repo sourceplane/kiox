@@ -12,8 +12,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/sourceplane/tinx/internal/gha"
+	"github.com/sourceplane/tinx/internal/manifest"
 	"github.com/sourceplane/tinx/internal/oci"
+	"github.com/sourceplane/tinx/internal/resolver"
 	tinxruntime "github.com/sourceplane/tinx/internal/runtime"
 	"github.com/sourceplane/tinx/internal/state"
 	"github.com/sourceplane/tinx/pkg/version"
@@ -89,49 +90,14 @@ func runAlias(cmd *cobra.Command, opts *rootOptions, args []string) error {
 }
 
 func executeProviderCapability(cmd *cobra.Command, home, providerRef string, providerMeta state.ProviderMetadata, args []string) error {
-	if providerMeta.InvocationStyle == state.InvocationStylePassthrough {
-		binaryPath, err := resolveBinaryPath(home, providerMeta, cmd.ErrOrStderr())
-		if err != nil {
-			return err
-		}
-		providerHome := providerHomeFromBinary(binaryPath)
-		envOverrides := map[string]string(nil)
-		if providerMeta.Source.Driver == gha.DriverName {
-			envOverrides, err = gha.PassthroughEnvironment(home, providerMeta, version.String())
-			if err != nil {
-				return err
-			}
-		}
-		return tinxruntime.Execute(tinxruntime.ExecOptions{
-			BinaryPath:   binaryPath,
-			Args:         args,
-			WorkingDir:   mustGetwd(),
-			ProviderHome: providerHome,
-			TinxVersion:  version.String(),
-			EnvOverrides: envOverrides,
-			Stdout:       cmd.OutOrStdout(),
-			Stderr:       cmd.ErrOrStderr(),
-			Stdin:        os.Stdin,
-		})
-	}
 	if len(args) == 0 {
 		return fmt.Errorf("capability is required")
 	}
 	if !contains(providerMeta.Capabilities, args[0]) {
 		return fmt.Errorf("provider %s does not expose capability %q", providerRef, args[0])
 	}
-	if providerMeta.Runtime == gha.RuntimeComposite || providerMeta.Runtime == gha.RuntimeNode {
-		return gha.Execute(gha.ExecuteOptions{
-			Home:        home,
-			Metadata:    providerMeta,
-			Capability:  args[0],
-			Args:        args[1:],
-			WorkingDir:  mustGetwd(),
-			TinxVersion: version.String(),
-			Stdout:      cmd.OutOrStdout(),
-			Stderr:      cmd.ErrOrStderr(),
-			Stdin:       os.Stdin,
-		})
+	if providerMeta.Runtime != manifest.RuntimeBinary || strings.TrimSpace(providerMeta.Source.LayoutPath) == "" {
+		return fmt.Errorf("provider %s uses an unsupported runtime %q", providerRef, providerMeta.Runtime)
 	}
 	binaryPath, err := resolveBinaryPath(home, providerMeta, cmd.ErrOrStderr())
 	if err != nil {
@@ -159,8 +125,8 @@ func resolveBinaryPath(home string, providerMeta state.ProviderMetadata, out io.
 }
 
 func resolveProviderForRun(home, ref string, plainHTTP bool, progressOut io.Writer) (state.ProviderMetadata, error) {
-	if gha.IsReference(ref) {
-		return gha.ResolveForRun(context.Background(), home, ref, progressOut)
+	if resolver.HasSourceScheme(ref) {
+		return state.ProviderMetadata{}, unsupportedProviderSourceError(ref, "expected an installed provider or OCI registry reference")
 	}
 	providerMeta, err := resolveInstalledProvider(home, ref)
 	if err == nil {
@@ -187,14 +153,6 @@ func writeProviderHelp(w io.Writer, alias, providerRef string, providerMeta stat
 		writeLine(w, "")
 		writeLine(w, "%s", providerMeta.Description)
 	}
-	if providerMeta.InvocationStyle == state.InvocationStylePassthrough {
-		writeConfiguredInputs(w, providerMeta)
-		writeLine(w, "")
-		writeLine(w, "Usage:")
-		writeLine(w, "  tinx %s [args...]", alias)
-		writeLine(w, "  tinx run %s [args...]", providerRef)
-		return
-	}
 	writeLine(w, "")
 	writeLine(w, "Capabilities:")
 	capabilities := append([]string(nil), providerMeta.Capabilities...)
@@ -210,15 +168,8 @@ func writeProviderHelp(w io.Writer, alias, providerRef string, providerMeta stat
 		}
 		writeLine(w, "  %-12s %s", capability, description)
 	}
-	writeProviderInputs(w, providerMeta)
 	writeLine(w, "")
 	writeLine(w, "Usage:")
-	if providerMeta.DefaultCapability != "" {
-		writeLine(w, "  tinx %s [--input name=value]", alias)
-		writeLine(w, "  tinx run %s [--input name=value]", providerRef)
-		writeLine(w, "  tinx %s %s [--input name=value]", alias, providerMeta.DefaultCapability)
-		return
-	}
 	writeLine(w, "  tinx %s <capability> [flags]", alias)
 	writeLine(w, "  tinx run %s <capability> [flags]", providerRef)
 }
@@ -232,15 +183,8 @@ func writeCapabilityHelp(w io.Writer, alias, providerRef, capability string, pro
 			writeLine(w, "  %s", description)
 		}
 	}
-	writeProviderInputs(w, providerMeta)
 	writeLine(w, "")
 	writeLine(w, "Usage:")
-	if providerMeta.DefaultCapability == capability {
-		writeLine(w, "  tinx %s [--input name=value]", alias)
-		writeLine(w, "  tinx run %s [--input name=value]", providerRef)
-		writeLine(w, "  tinx %s %s [--input name=value]", alias, capability)
-		return
-	}
 	writeLine(w, "  tinx %s %s [flags]", alias, capability)
 }
 
@@ -252,85 +196,13 @@ type providerInvocationPlan struct {
 }
 
 func planProviderInvocation(providerMeta state.ProviderMetadata, args []string) providerInvocationPlan {
-	if providerMeta.InvocationStyle == state.InvocationStylePassthrough {
-		if len(args) > 0 && isHelpToken(args[0]) {
-			return providerInvocationPlan{showProviderHelp: true}
-		}
-		return providerInvocationPlan{args: args}
-	}
-	if providerMeta.DefaultCapability == "" {
-		if len(args) == 0 || isHelpToken(args[0]) {
-			return providerInvocationPlan{showProviderHelp: true}
-		}
-		if len(args) >= 2 && isHelpToken(args[1]) {
-			return providerInvocationPlan{showCapabilityHelp: true, capability: args[0]}
-		}
-		return providerInvocationPlan{capability: args[0], args: args}
-	}
-	if len(args) == 0 {
-		return providerInvocationPlan{capability: providerMeta.DefaultCapability, args: []string{providerMeta.DefaultCapability}}
-	}
-	if isHelpToken(args[0]) {
+	if len(args) == 0 || isHelpToken(args[0]) {
 		return providerInvocationPlan{showProviderHelp: true}
 	}
-	if contains(providerMeta.Capabilities, args[0]) {
-		if len(args) >= 2 && isHelpToken(args[1]) {
-			return providerInvocationPlan{showCapabilityHelp: true, capability: args[0]}
-		}
-		return providerInvocationPlan{capability: args[0], args: args}
+	if len(args) >= 2 && isHelpToken(args[1]) {
+		return providerInvocationPlan{showCapabilityHelp: true, capability: args[0]}
 	}
-	invocationArgs := append([]string{providerMeta.DefaultCapability}, args...)
-	return providerInvocationPlan{capability: providerMeta.DefaultCapability, args: invocationArgs}
-}
-
-func writeProviderInputs(w io.Writer, providerMeta state.ProviderMetadata) {
-	if len(providerMeta.Inputs) == 0 {
-		return
-	}
-	writeLine(w, "")
-	writeLine(w, "Inputs:")
-	names := make([]string, 0, len(providerMeta.Inputs))
-	for name := range providerMeta.Inputs {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		input := providerMeta.Inputs[name]
-		details := make([]string, 0, 2)
-		if input.Required {
-			details = append(details, "required")
-		}
-		if configured := providerMeta.Source.Inputs[name]; configured != "" {
-			details = append(details, "configured: "+configured)
-		} else if input.Default != "" {
-			details = append(details, "default: "+input.Default)
-		}
-		trailer := ""
-		if len(details) > 0 {
-			trailer = " (" + strings.Join(details, ", ") + ")"
-		}
-		if input.Description == "" {
-			writeLine(w, "  %s%s", name, trailer)
-			continue
-		}
-		writeLine(w, "  %-12s %s%s", name, input.Description, trailer)
-	}
-}
-
-func writeConfiguredInputs(w io.Writer, providerMeta state.ProviderMetadata) {
-	if len(providerMeta.Source.Inputs) == 0 {
-		return
-	}
-	writeLine(w, "")
-	writeLine(w, "Configured Inputs:")
-	names := make([]string, 0, len(providerMeta.Source.Inputs))
-	for name := range providerMeta.Source.Inputs {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		writeLine(w, "  %-12s %s", name, providerMeta.Source.Inputs[name])
-	}
+	return providerInvocationPlan{capability: args[0], args: args}
 }
 
 func isHelpToken(value string) bool {
@@ -376,6 +248,10 @@ func providerRefFromOCIReference(ref string) (string, bool) {
 
 func providerHomeFromBinary(binaryPath string) string {
 	return filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(binaryPath))))
+}
+
+func unsupportedProviderSourceError(ref, detail string) error {
+	return fmt.Errorf("unsupported provider source %q: %s", ref, detail)
 }
 
 func resolveInstalledProvider(home, ref string) (state.ProviderMetadata, error) {

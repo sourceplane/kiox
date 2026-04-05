@@ -23,7 +23,6 @@ are executed from versioned provider binaries.
 
 - `tinx install` installs provider metadata from registry or local OCI layout
 - `tinx run` resolves alias/provider and executes a capability
-- `tinx run gha://owner/repo@ref` treats a GitHub composite action as a cached tinx provider
 - `tinx pack` packages a provider into an OCI image layout
 - `tinx release` builds, packages, and optionally pushes artifacts
 
@@ -166,55 +165,12 @@ tinx install <ref> [as <alias>] [--source <oci-layout>] [--tag <tag>] [--plain-h
 tinx install <alias> <ref> [--source <oci-layout>] [--tag <tag>] [--plain-http]
 tinx run <provider-or-alias> [capability-or-args...] [--plain-http]
 tinx run <provider-ref> [--plain-http] -- <command...>
-tinx run gha://<owner>/<repo>@<ref> [--input name=value]
-tinx install <alias> gha://<owner>/<repo>@<ref> [--input name=value]
 tinx <alias> [capability-or-args...]
 tinx -- <command...>
 tinx pack [--manifest tinx.yaml] [--artifact-root <dir>] [--output oci] [--tag <tag>]
 tinx release [--manifest tinx.yaml] [--dist dist] [--output oci] [--main <go-main-pkg>] [--push <oci-ref>]
 tinx version
 ```
-
-## Experimental GitHub Actions Support
-
-`tinx` can execute GitHub Actions through the `gha://` provider source.
-The current MVP supports composite and Node-based actions, and caches the action source under the normal tinx provider home.
-
-Example:
-
-```bash
-tinx run gha://azure/setup-helm@v4 --input version=3.18.4
-```
-
-Install-as-provider example:
-
-```bash
-tinx install helm gha://azure/setup-helm@v4 --input version=3.18.4
-tinx run helm version --short
-```
-
-Current scope:
-
-- Composite actions (`runs.using: composite`)
-- Node actions (`runs.using: node20`, `node24`, etc.) executed with the system `node` on `PATH`
-- Alias installs (`tinx install <alias> gha://...`) create alias-scoped providers under the normal tinx provider home
-- Install-time GitHub Action inputs persist on the installed provider via `--input name=value`
-- Setup-style actions that expose exactly one managed executable on their action-added `PATH` are promoted to local binary providers
-- Promoted providers get a generated local `tinx.yaml` and execute like a normal passthrough tool provider
-- `GITHUB_ENV`, `GITHUB_PATH`, `GITHUB_OUTPUT`, and `GITHUB_STATE` file-command handling
-- A stable `tinx` shim is placed on the GHA runtime `PATH`
-- Cached runtime state under `~/.tinx/providers/gha/...`
-
-Current limitations:
-
-- No Docker actions yet
-- No nested `uses:` steps inside composite actions yet
-- Binary promotion is intentionally conservative; if bootstrap yields zero or multiple managed executables, the installed provider remains action-backed instead of guessing an entrypoint
-
-Current Node runtime behavior:
-
-- `tinx` expects a working `node` runtime to already be available on `PATH`
-- A future tinx-native Node provider can replace this assumption without changing the `gha://` interface
 
 ## Configuration
 

@@ -9,13 +9,18 @@ func ResolveProviderSource(ref string) string {
 	if trimmed == "" {
 		return ""
 	}
-	if strings.Contains(trimmed, "://") {
+	if HasSourceScheme(trimmed) {
 		return trimmed
 	}
 	if !isShortProviderRef(trimmed) {
 		return trimmed
 	}
 	return DefaultRegistry + "/" + trimmed
+}
+
+func HasSourceScheme(ref string) bool {
+	trimmed := strings.TrimSpace(ref)
+	return trimmed != "" && strings.Contains(trimmed, "://")
 }
 
 func isShortProviderRef(ref string) bool {

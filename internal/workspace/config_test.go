@@ -1,8 +1,10 @@
 package workspace
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -57,5 +59,24 @@ func TestDiscoverSkipsProviderManifestAndFindsParentWorkspace(t *testing.T) {
 	}
 	if discovery.DisplayName() != "dev" {
 		t.Fatalf("expected workspace name dev, got %q", discovery.DisplayName())
+	}
+}
+
+func TestSyncRejectsProviderSourceSchemes(t *testing.T) {
+	root := t.TempDir()
+	config := Config{
+		Kind:      KindWorkspace,
+		Workspace: "dev",
+		Providers: map[string]Provider{
+			"echo": {Source: "custom://acme/echo@v1"},
+		},
+	}
+
+	_, err := Sync(context.Background(), root, config, SyncOptions{})
+	if err == nil {
+		t.Fatal("expected Sync to reject provider source schemes")
+	}
+	if !strings.Contains(err.Error(), `unsupported provider source "custom://acme/echo@v1"`) {
+		t.Fatalf("unexpected Sync error: %v", err)
 	}
 }
