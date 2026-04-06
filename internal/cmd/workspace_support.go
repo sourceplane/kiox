@@ -20,6 +20,50 @@ type workspaceTarget struct {
 	Root       string
 	ConfigPath string
 	Config     workspace.Config
+	Name       string
+	Status     string
+	Detail     string
+}
+
+func (target *workspaceTarget) DisplayName() string {
+	if target == nil {
+		return ""
+	}
+	if name := strings.TrimSpace(target.Config.Name()); name != "" {
+		return name
+	}
+	if name := strings.TrimSpace(target.Name); name != "" {
+		return name
+	}
+	if root := strings.TrimSpace(target.Root); root != "" {
+		return filepath.Base(root)
+	}
+	return ""
+}
+
+func (target *workspaceTarget) DeleteReference() string {
+	if target == nil {
+		return ""
+	}
+	if name := strings.TrimSpace(target.Name); name != "" {
+		return name
+	}
+	return target.Root
+}
+
+func (target *workspaceTarget) IsMissing() bool {
+	return target != nil && strings.EqualFold(target.Status, "missing")
+}
+
+func (target *workspaceTarget) MissingError() error {
+	if !target.IsMissing() {
+		return nil
+	}
+	name := target.DisplayName()
+	if name == "" {
+		name = target.Root
+	}
+	return fmt.Errorf("workspace %q is missing: root %s no longer exists; run tinx workspace delete %q to unregister it", name, displayInventoryPath(target.Root), target.DeleteReference())
 }
 
 func executeCLI(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -99,8 +143,12 @@ func runWorkspaceCommand(cmd *cobra.Command, root *rootOptions, command []string
 	if target == nil {
 		return fmt.Errorf("no active workspace; run tinx workspace use <workspace> first or execute inside a workspace")
 	}
+	if err := requireReadyWorkspaceTarget(target); err != nil {
+		return err
+	}
 	result, err := workspace.Sync(cmd.Context(), target.Root, target.Config, workspace.SyncOptions{
-		Out: cmd.ErrOrStderr(),
+		Out:        cmd.ErrOrStderr(),
+		GlobalHome: globalHome,
 	})
 	if err != nil {
 		return err
@@ -139,7 +187,7 @@ func resolveSelectedWorkspaceTarget(root *rootOptions, globalHome string) (*work
 
 func resolveCurrentWorkspaceTarget(globalHome string) (*workspaceTarget, error) {
 	if discovery, err := workspace.Discover(mustGetwd()); err == nil && discovery != nil {
-		return &workspaceTarget{Root: discovery.Root, ConfigPath: discovery.ConfigPath, Config: discovery.Config}, nil
+		return &workspaceTarget{Root: discovery.Root, ConfigPath: discovery.ConfigPath, Config: discovery.Config, Name: discovery.Config.Name(), Status: "ready"}, nil
 	} else if err != nil {
 		return nil, err
 	}
@@ -150,7 +198,15 @@ func resolveCurrentWorkspaceTarget(globalHome string) (*workspaceTarget, error) 
 	if activeRoot == "" {
 		return nil, nil
 	}
-	return resolveWorkspaceTarget(activeRoot, globalHome)
+	known, err := state.LoadWorkspaces(globalHome)
+	if err != nil {
+		return nil, err
+	}
+	names := workspaceNamesForRoot(known, activeRoot)
+	if len(names) > 0 {
+		return workspaceTargetFromRegisteredPath(activeRoot, names[0])
+	}
+	return workspaceTargetFromRegisteredPath(activeRoot, "")
 }
 
 func resolveWorkspaceTarget(reference, globalHome string) (*workspaceTarget, error) {
@@ -158,17 +214,20 @@ func resolveWorkspaceTarget(reference, globalHome string) (*workspaceTarget, err
 	if trimmed == "" {
 		return nil, fmt.Errorf("workspace is required")
 	}
+	known, err := state.LoadWorkspaces(globalHome)
+	if err != nil {
+		return nil, err
+	}
 	if target, err := workspaceTargetFromPath(trimmed); err != nil {
 		return nil, err
 	} else if target != nil {
 		return target, nil
 	}
-	known, err := state.LoadWorkspaces(globalHome)
-	if err != nil {
-		return nil, err
-	}
 	if path := strings.TrimSpace(known[trimmed]); path != "" {
-		return workspaceTargetFromPath(path)
+		return workspaceTargetFromRegisteredPath(path, trimmed)
+	}
+	if looksLikeWorkspacePath(trimmed) {
+		return nil, fmt.Errorf("workspace path %q does not exist", trimmed)
 	}
 	names := make([]string, 0, len(known))
 	for name := range known {
@@ -201,28 +260,91 @@ func workspaceTargetFromPath(path string) (*workspaceTarget, error) {
 		if discovery == nil {
 			return nil, fmt.Errorf("no workspace manifest found under %s", absPath)
 		}
-		return &workspaceTarget{Root: discovery.Root, ConfigPath: discovery.ConfigPath, Config: discovery.Config}, nil
+		return &workspaceTarget{Root: discovery.Root, ConfigPath: discovery.ConfigPath, Config: discovery.Config, Name: discovery.Config.Name(), Status: "ready"}, nil
 	}
 	config, err := workspace.Load(absPath)
 	if err != nil {
 		return nil, err
 	}
-	return &workspaceTarget{Root: filepath.Dir(absPath), ConfigPath: absPath, Config: config}, nil
+	return &workspaceTarget{Root: filepath.Dir(absPath), ConfigPath: absPath, Config: config, Name: config.Name(), Status: "ready"}, nil
+}
+
+func workspaceTargetFromRegisteredPath(path, name string) (*workspaceTarget, error) {
+	target, err := workspaceTargetFromPath(path)
+	if err != nil {
+		return nil, err
+	}
+	if target != nil {
+		if target.Name == "" {
+			target.Name = strings.TrimSpace(name)
+		}
+		if target.Status == "" {
+			target.Status = "ready"
+		}
+		return target, nil
+	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return nil, fmt.Errorf("resolve workspace path: %w", err)
+	}
+	return &workspaceTarget{
+		Root:   absPath,
+		Name:   strings.TrimSpace(name),
+		Status: "missing",
+		Detail: "workspace root does not exist",
+	}, nil
 }
 
 func rememberWorkspaceTarget(globalHome string, target *workspaceTarget) error {
 	if target == nil {
 		return nil
 	}
-	if err := state.RememberWorkspace(globalHome, target.Config.Name(), target.Root); err != nil {
+	name := target.DisplayName()
+	if err := state.RememberWorkspace(globalHome, name, target.Root); err != nil {
 		return err
 	}
-	if base := filepath.Base(target.Root); base != "" && base != "." && base != target.Config.Name() {
+	if base := filepath.Base(target.Root); base != "" && base != "." && base != name {
 		if err := state.RememberWorkspace(globalHome, base, target.Root); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func requireReadyWorkspaceTarget(target *workspaceTarget) error {
+	if target == nil {
+		return nil
+	}
+	if target.IsMissing() {
+		return target.MissingError()
+	}
+	return nil
+}
+
+func workspaceNamesForRoot(known map[string]string, root string) []string {
+	normalizedRoot := normalizeInventoryPath(root)
+	if normalizedRoot == "" {
+		return nil
+	}
+	names := make([]string, 0, 1)
+	for name, knownRoot := range known {
+		if normalizeInventoryPath(knownRoot) == normalizedRoot {
+			names = append(names, strings.TrimSpace(name))
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+func looksLikeWorkspacePath(reference string) bool {
+	trimmed := strings.TrimSpace(reference)
+	if trimmed == "" {
+		return false
+	}
+	if trimmed == "." || trimmed == ".." {
+		return true
+	}
+	return strings.Contains(trimmed, string(os.PathSeparator))
 }
 
 func workspaceWorkingDir(root string) string {

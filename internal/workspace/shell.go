@@ -62,17 +62,13 @@ func BuildShellEnvironment(root, home string, aliases map[string]string, opts Sh
 		if providerRef == "" {
 			continue
 		}
-		namespace, name, err := splitProviderRef(providerRef)
+		meta, err := state.LoadProviderMetadataByKey(home, providerRef)
 		if err != nil {
 			return ShellEnvironment{}, err
 		}
-		meta, err := state.LoadProviderMetadata(home, namespace, name)
-		if err != nil {
-			return ShellEnvironment{}, err
-		}
-		binaryPath := oci.CurrentBinaryPath(home, meta)
+		binaryPath := oci.CurrentBinaryPath(meta)
 		if info, err := os.Stat(binaryPath); err != nil || info.IsDir() {
-			binaryPath, err = oci.MaterializeRuntime(home, meta, goruntime.GOOS, goruntime.GOARCH, opts.Out)
+			binaryPath, err = oci.MaterializeRuntime(meta, goruntime.GOOS, goruntime.GOARCH, opts.Out)
 			if err != nil {
 				return ShellEnvironment{}, err
 			}
@@ -159,7 +155,7 @@ func addAliasEnvironment(env map[string]string, alias string, meta state.Provide
 	if aliasToken == "" {
 		return
 	}
-	providerRoot := state.VersionRoot(home, meta.Namespace, meta.Name, meta.Version)
+	providerRoot := state.MetadataStoreRoot(meta)
 	ref := strings.TrimSpace(meta.Namespace) + "/" + strings.TrimSpace(meta.Name)
 	env["TINX_PROVIDER_"+aliasToken+"_REF"] = ref
 	env["TINX_PROVIDER_"+aliasToken+"_HOME"] = providerRoot

@@ -40,7 +40,10 @@ func newStatusCommand(root *rootOptions) *cobra.Command {
 				renderDefaultStatus(cmd.OutOrStdout(), scope, verbose, short)
 				return nil
 			}
-			result, err := workspace.Sync(cmd.Context(), target.Root, target.Config, workspace.SyncOptions{Out: cmd.ErrOrStderr()})
+			if err := requireReadyWorkspaceTarget(target); err != nil {
+				return err
+			}
+			result, err := workspace.Sync(cmd.Context(), target.Root, target.Config, workspace.SyncOptions{Out: cmd.ErrOrStderr(), GlobalHome: globalHome})
 			if err != nil {
 				return err
 			}
@@ -62,7 +65,7 @@ func newStatusCommand(root *rootOptions) *cobra.Command {
 }
 
 func renderWorkspaceStatus(w io.Writer, target *workspaceTarget, home string, shellEnv workspace.ShellEnvironment, providers []providerInventory, verbose, short bool) {
-	workspaceName := target.Config.Name()
+	workspaceName := target.DisplayName()
 	if workspaceName == "" {
 		workspaceName = filepath.Base(target.Root)
 	}

@@ -71,6 +71,8 @@ type LockedProvider struct {
 	Provider string `yaml:"provider"`
 	Source   string `yaml:"source"`
 	Version  string `yaml:"version"`
+	Resolved string `yaml:"resolved,omitempty"`
+	Store    string `yaml:"store,omitempty"`
 }
 
 func (p *Provider) UnmarshalYAML(node *yaml.Node) error {
@@ -268,6 +270,21 @@ func SaveLock(root, name string, providers []LockedProvider) error {
 		return fmt.Errorf("encode workspace lock: %w", err)
 	}
 	return os.WriteFile(LockPath(root), data, 0o644)
+}
+
+func LoadLock(root string) (LockFile, error) {
+	var lock LockFile
+	data, err := os.ReadFile(LockPath(root))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return lock, nil
+		}
+		return lock, fmt.Errorf("read workspace lock: %w", err)
+	}
+	if err := yaml.Unmarshal(data, &lock); err != nil {
+		return lock, fmt.Errorf("decode workspace lock: %w", err)
+	}
+	return lock, nil
 }
 
 func (d *Discovery) DisplayName() string {

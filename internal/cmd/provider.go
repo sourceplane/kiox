@@ -83,7 +83,7 @@ func newProviderRemoveCommand(root *rootOptions) *cobra.Command {
 			delete(providers, alias)
 			target.Config.Providers = providers
 			target.Config.Spec.Providers = nil
-			if ref != "" && !providerRefStillReferenced(currentAliases, target.Config, alias, ref) {
+			if ref != "" && !providerKeyStillReferenced(currentAliases, target.Config, alias, ref) {
 				if err := removeProviderCache(home, ref); err != nil {
 					return err
 				}
@@ -92,7 +92,7 @@ func newProviderRemoveCommand(root *rootOptions) *cobra.Command {
 			if err := workspace.Save(manifestPath, target.Config); err != nil {
 				return err
 			}
-			result, err := workspace.Sync(cmd.Context(), target.Root, target.Config, workspace.SyncOptions{Out: cmd.ErrOrStderr()})
+			result, err := workspace.Sync(cmd.Context(), target.Root, target.Config, workspace.SyncOptions{Out: cmd.ErrOrStderr(), GlobalHome: globalHome})
 			if err != nil {
 				return err
 			}
@@ -140,7 +140,7 @@ func newProviderUpdateCommand(root *rootOptions) *cobra.Command {
 				}
 			}
 			if len(aliasesToRefresh) == 0 {
-				writeLine(cmd.OutOrStdout(), "workspace %s has no providers to update", target.Config.Name())
+				writeLine(cmd.OutOrStdout(), "workspace %s has no providers to update", target.DisplayName())
 				return nil
 			}
 			for _, alias := range aliasesToRefresh {
@@ -148,7 +148,7 @@ func newProviderUpdateCommand(root *rootOptions) *cobra.Command {
 					return err
 				}
 			}
-			result, err := workspace.Sync(cmd.Context(), target.Root, target.Config, workspace.SyncOptions{Out: cmd.ErrOrStderr()})
+			result, err := workspace.Sync(cmd.Context(), target.Root, target.Config, workspace.SyncOptions{Out: cmd.ErrOrStderr(), GlobalHome: globalHome, RefreshAliases: aliasesToRefresh})
 			if err != nil {
 				return err
 			}
@@ -176,6 +176,9 @@ func resolveRequiredWorkspaceTarget(cmd *cobra.Command, root *rootOptions) (stri
 	if target == nil {
 		return "", nil, fmt.Errorf("no workspace selected; run tinx workspace use <workspace>, execute inside a workspace, or pass --workspace")
 	}
+	if err := requireReadyWorkspaceTarget(target); err != nil {
+		return "", nil, err
+	}
 	return globalHome, target, nil
 }
 
@@ -195,6 +198,10 @@ func matchWorkspaceProviderSelection(config workspace.Config, aliases map[string
 		}
 		if aliases[alias] == trimmed {
 			matches = append(matches, alias)
+			continue
+		}
+		if state.ProviderRefFromKey(aliases[alias]) == trimmed {
+			matches = append(matches, alias)
 		}
 	}
 	if len(matches) == 0 {
@@ -207,7 +214,7 @@ func matchWorkspaceProviderSelection(config workspace.Config, aliases map[string
 	return matches[0], aliases[matches[0]], nil
 }
 
-func providerRefStillReferenced(aliases map[string]string, config workspace.Config, removedAlias, removedRef string) bool {
+func providerKeyStillReferenced(aliases map[string]string, config workspace.Config, removedAlias, removedRef string) bool {
 	for _, alias := range config.ProviderAliases() {
 		if alias == removedAlias {
 			continue
@@ -223,11 +230,11 @@ func removeProviderCache(home, ref string) error {
 	if strings.TrimSpace(ref) == "" {
 		return nil
 	}
-	namespace, name, err := splitProviderRef(ref)
+	namespace, name, version, err := state.SplitProviderKey(ref)
 	if err != nil {
 		return nil
 	}
-	if err := os.RemoveAll(state.ProviderRoot(home, namespace, name)); err != nil {
+	if err := os.RemoveAll(state.VersionRoot(home, namespace, name, version)); err != nil {
 		return fmt.Errorf("remove provider cache for %s: %w", ref, err)
 	}
 	return nil

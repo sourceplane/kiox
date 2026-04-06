@@ -175,37 +175,39 @@ func BinaryMediaType(goos, goarch string) string {
 	return fmt.Sprintf("application/vnd.tinx.provider.binary.%s.%s.v1", goos, goarch)
 }
 
-func InstallMetadata(layoutPath, tag, home, alias string, out io.Writer) (state.ProviderMetadata, error) {
+func InstallMetadata(layoutPath, tag, activationHome, storeHome, alias string, out io.Writer) (state.ProviderMetadata, error) {
 	tracker := progress.New(out)
 	defer tracker.Finish()
 	tracker.Step("lookup", "reading local OCI layout")
-	return installMetadata(layoutPath, tag, home, alias, "", false, tracker)
+	return installMetadata(layoutPath, tag, activationHome, storeHome, alias, "", false, tracker)
 }
 
-func installMetadata(layoutPath, tag, home, alias, ref string, plainHTTP bool, tracker *progress.Tracker) (state.ProviderMetadata, error) {
-	provider, _, config, metadata, manifestBytes, metadataBytes, err := readLayout(layoutPath, tag)
+func installMetadata(layoutPath, tag, activationHome, storeHome, alias, ref string, plainHTTP bool, tracker *progress.Tracker) (state.ProviderMetadata, error) {
+	_, _, config, metadata, manifestBytes, metadataBytes, err := readLayout(layoutPath, tag)
 	if err != nil {
 		return state.ProviderMetadata{}, err
 	}
 	tracker.Done("lookup", fmt.Sprintf("resolved %s/%s@%s", config.Namespace, config.Name, config.Version))
 
-	versionRoot := state.VersionRoot(home, provider.Metadata.Namespace, provider.Metadata.Name, provider.Metadata.Version)
-	if err := os.MkdirAll(versionRoot, 0o755); err != nil {
-		return state.ProviderMetadata{}, fmt.Errorf("create version root: %w", err)
+	manifestDescriptor, err := resolveManifest(layoutPath, tag)
+	if err != nil {
+		return state.ProviderMetadata{}, err
+	}
+	storeID := providerStoreID(config, manifestDescriptor.Digest.String())
+	storeRoot := state.StoreRoot(storeHome, storeID)
+	storeLayoutPath := state.StoreLayoutPath(storeHome, storeID)
+	if err := os.MkdirAll(storeLayoutPath, 0o755); err != nil {
+		return state.ProviderMetadata{}, fmt.Errorf("create provider store: %w", err)
 	}
 	tracker.Step("cache", "preparing provider cache")
-	cachedLayoutPath := filepath.Join(versionRoot, "oci")
-	if err := os.RemoveAll(cachedLayoutPath); err != nil {
-		return state.ProviderMetadata{}, fmt.Errorf("reset cached layout: %w", err)
-	}
-	if err := copyDirectory(layoutPath, cachedLayoutPath); err != nil {
+	if err := copyDirectory(layoutPath, storeLayoutPath); err != nil {
 		return state.ProviderMetadata{}, fmt.Errorf("cache OCI layout: %w", err)
 	}
 	tracker.Info("cache", "cached OCI blobs")
-	if err := os.WriteFile(filepath.Join(versionRoot, "tinx.yaml"), manifestBytes, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(storeRoot, "tinx.yaml"), manifestBytes, 0o644); err != nil {
 		return state.ProviderMetadata{}, fmt.Errorf("cache manifest: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(versionRoot, "provider-metadata.json"), metadataBytes, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(storeRoot, "provider-metadata.json"), metadataBytes, 0o644); err != nil {
 		return state.ProviderMetadata{}, fmt.Errorf("cache provider metadata: %w", err)
 	}
 
@@ -213,6 +215,8 @@ func installMetadata(layoutPath, tag, home, alias, ref string, plainHTTP bool, t
 		Namespace:              config.Namespace,
 		Name:                   config.Name,
 		Version:                config.Version,
+		StoreID:                storeID,
+		StorePath:              storeRoot,
 		Description:            config.Description,
 		Homepage:               config.Homepage,
 		License:                config.License,
@@ -221,23 +225,23 @@ func installMetadata(layoutPath, tag, home, alias, ref string, plainHTTP bool, t
 		Capabilities:           append([]string(nil), metadata.Capabilities...),
 		CapabilityDescriptions: copyCapabilityDescriptions(metadata.CapabilityDescriptions),
 		Platforms:              toStatePlatforms(metadata.Platforms),
-		Source:                 state.Source{LayoutPath: cachedLayoutPath, Tag: tag, Ref: ref, PlainHTTP: plainHTTP},
+		Source:                 state.Source{LayoutPath: storeLayoutPath, Tag: tag, Ref: resolvedSourceRef(ref, manifestDescriptor.Digest.String()), PlainHTTP: plainHTTP},
 		InstalledAt:            time.Now().UTC(),
 	}
-	if err := state.SaveProviderMetadata(home, meta); err != nil {
+	if err := state.SaveProviderMetadata(activationHome, meta); err != nil {
 		return state.ProviderMetadata{}, err
 	}
 	tracker.Info("install", "persisted provider metadata")
-	if err := state.SaveInstallSource(home, meta.Namespace, meta.Name, meta.Version, meta.Source); err != nil {
+	if err := state.SaveInstallSource(activationHome, meta.Namespace, meta.Name, meta.Version, meta.Source); err != nil {
 		return state.ProviderMetadata{}, err
 	}
 	if alias != "" {
-		aliases, err := state.LoadAliases(home)
+		aliases, err := state.LoadAliases(activationHome)
 		if err != nil {
 			return state.ProviderMetadata{}, err
 		}
-		aliases[alias] = meta.Namespace + "/" + meta.Name
-		if err := state.SaveAliases(home, aliases); err != nil {
+		aliases[alias] = state.MetadataKey(meta)
+		if err := state.SaveAliases(activationHome, aliases); err != nil {
 			return state.ProviderMetadata{}, err
 		}
 		tracker.Info("install", fmt.Sprintf("updated alias %s", alias))
@@ -246,32 +250,34 @@ func installMetadata(layoutPath, tag, home, alias, ref string, plainHTTP bool, t
 	return meta, nil
 }
 
-func MaterializeRuntime(home string, meta state.ProviderMetadata, goos, goarch string, out io.Writer) (string, error) {
+func MaterializeRuntime(meta state.ProviderMetadata, goos, goarch string, out io.Writer) (string, error) {
 	tracker := progress.New(out)
 	defer tracker.Finish()
-	return materializeRuntime(home, meta, goos, goarch, true, tracker)
+	return materializeRuntime(meta, goos, goarch, true, tracker)
 }
 
-func materializeRuntime(home string, meta state.ProviderMetadata, goos, goarch string, allowRemoteHydrate bool, tracker *progress.Tracker) (string, error) {
+func materializeRuntime(meta state.ProviderMetadata, goos, goarch string, allowRemoteHydrate bool, tracker *progress.Tracker) (string, error) {
 	tracker.Step("runtime", fmt.Sprintf("resolving %s/%s for %s/%s", meta.Namespace, meta.Name, goos, goarch))
 	provider, view, _, _, _, _, err := readLayout(meta.Source.LayoutPath, meta.Source.Tag)
 	if err != nil {
 		return "", err
 	}
-	versionRoot := state.VersionRoot(home, meta.Namespace, meta.Name, meta.Version)
-	if err := os.MkdirAll(versionRoot, 0o755); err != nil {
-		return "", fmt.Errorf("create version root: %w", err)
+	storeRoot := state.MetadataStoreRoot(meta)
+	if storeRoot == "" {
+		return "", fmt.Errorf("provider store root is missing for %s/%s@%s", meta.Namespace, meta.Name, meta.Version)
+	}
+	if err := os.MkdirAll(storeRoot, 0o755); err != nil {
+		return "", fmt.Errorf("create provider store root: %w", err)
 	}
 	if view.AssetsDescriptor != nil {
 		tracker.Info("runtime", "extracting cached assets")
-		if err := extractTarBlob(meta.Source.LayoutPath, *view.AssetsDescriptor, versionRoot); err != nil {
+		if err := extractTarBlob(meta.Source.LayoutPath, *view.AssetsDescriptor, storeRoot); err != nil {
 			if allowRemoteHydrate && meta.Source.Ref != "" {
 				tracker.Info("hydrate", "cached assets incomplete, hydrating from remote")
-				refreshed, hydrateErr := InstallRemoteFull(context.Background(), home, meta.Source.Ref, "", meta.Source.PlainHTTP, tracker.Writer())
-				if hydrateErr != nil {
+				if hydrateErr := hydrateStoreFromRemote(context.Background(), meta.Source.LayoutPath, meta.Source.Ref, meta.Source.PlainHTTP); hydrateErr != nil {
 					return "", err
 				}
-				return materializeRuntime(home, refreshed, goos, goarch, false, tracker)
+				return materializeRuntime(meta, goos, goarch, false, tracker)
 			}
 			return "", err
 		}
@@ -284,7 +290,7 @@ func materializeRuntime(home string, meta state.ProviderMetadata, goos, goarch s
 	if !ok {
 		return "", fmt.Errorf("binary layer missing for %s/%s", goos, goarch)
 	}
-	binaryPath := filepath.Join(versionRoot, filepath.FromSlash(platform.Binary))
+	binaryPath := filepath.Join(storeRoot, filepath.FromSlash(platform.Binary))
 	binaryName := filepath.Base(binaryPath)
 	if exists(binaryPath) {
 		tracker.Cached("runtime", fmt.Sprintf("cached %s", binaryName))
@@ -295,11 +301,10 @@ func materializeRuntime(home string, meta state.ProviderMetadata, goos, goarch s
 	if err != nil {
 		if allowRemoteHydrate && meta.Source.Ref != "" {
 			tracker.Info("hydrate", "binary blob missing, hydrating from remote")
-			refreshed, hydrateErr := InstallRemoteFull(context.Background(), home, meta.Source.Ref, "", meta.Source.PlainHTTP, tracker.Writer())
-			if hydrateErr != nil {
+			if hydrateErr := hydrateStoreFromRemote(context.Background(), meta.Source.LayoutPath, meta.Source.Ref, meta.Source.PlainHTTP); hydrateErr != nil {
 				return "", err
 			}
-			return materializeRuntime(home, refreshed, goos, goarch, false, tracker)
+			return materializeRuntime(meta, goos, goarch, false, tracker)
 		}
 		return "", err
 	}
@@ -335,8 +340,26 @@ func copyCapabilityDescriptions(values map[string]string) map[string]string {
 	return copyMap
 }
 
-func CurrentBinaryPath(home string, meta state.ProviderMetadata) string {
-	return filepath.Join(state.VersionRoot(home, meta.Namespace, meta.Name, meta.Version), "bin", runtime.GOOS, runtime.GOARCH, meta.Entrypoint)
+func CurrentBinaryPath(meta state.ProviderMetadata) string {
+	return filepath.Join(state.MetadataStoreRoot(meta), "bin", runtime.GOOS, runtime.GOARCH, meta.Entrypoint)
+}
+
+func providerStoreID(config ProviderConfig, manifestDigest string) string {
+	material := strings.Join([]string{config.Namespace, config.Name, config.Version, manifestDigest}, "\x00")
+	sum := sha256.Sum256([]byte(material))
+	return hex.EncodeToString(sum[:])
+}
+
+func resolvedSourceRef(ref, manifestDigest string) string {
+	trimmedRef := strings.TrimSpace(ref)
+	if trimmedRef == "" {
+		return ""
+	}
+	repository, _ := parseReference(trimmedRef)
+	if strings.TrimSpace(manifestDigest) == "" {
+		return trimmedRef
+	}
+	return repository + "@" + strings.TrimSpace(manifestDigest)
 }
 
 func readLayout(layoutPath, tag string) (manifest.Provider, ProviderManifestView, ProviderConfig, ProviderMetadata, []byte, []byte, error) {

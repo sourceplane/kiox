@@ -50,13 +50,14 @@ func runInitCommand(cmd *cobra.Command, root *rootOptions, args []string, defaul
 	if err := workspace.Save(workspace.ManifestPath(target.Root), target.Config); err != nil {
 		return err
 	}
-	result, err := workspace.Sync(cmd.Context(), target.Root, target.Config, workspace.SyncOptions{
-		Out: cmd.ErrOrStderr(),
-	})
+	globalHome, err := ensureGlobalHome(root.Home)
 	if err != nil {
 		return err
 	}
-	globalHome, err := ensureGlobalHome(root.Home)
+	result, err := workspace.Sync(cmd.Context(), target.Root, target.Config, workspace.SyncOptions{
+		Out:        cmd.ErrOrStderr(),
+		GlobalHome: globalHome,
+	})
 	if err != nil {
 		return err
 	}

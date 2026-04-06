@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	gcrregistry "github.com/google/go-containerregistry/pkg/registry"
+
+	"github.com/sourceplane/tinx/internal/state"
 )
 
 func TestReleaseAndInstallLocalLayout(t *testing.T) {
@@ -37,10 +39,14 @@ func TestReleaseAndInstallLocalLayout(t *testing.T) {
 	if !bytes.Contains(installBuf.Bytes(), []byte("installed sourceplane/echo-provider@v0.1.0")) {
 		t.Fatalf("unexpected install output: %s", installBuf.String())
 	}
+	meta, err := state.LoadProviderMetadata(home, "sourceplane", "echo-provider", "v0.1.0")
+	if err != nil {
+		t.Fatalf("load installed provider metadata: %v", err)
+	}
 	for _, expected := range []string{
-		filepath.Join(home, "providers", "sourceplane", "echo-provider", "metadata.json"),
-		filepath.Join(home, "providers", "sourceplane", "echo-provider", "v0.1.0", "oci", "index.json"),
-		filepath.Join(home, "providers", "sourceplane", "echo-provider", "v0.1.0", "tinx.yaml"),
+		filepath.Join(home, "providers", "sourceplane", "echo-provider", "v0.1.0", "metadata.json"),
+		filepath.Join(meta.StorePath, "oci", "index.json"),
+		filepath.Join(meta.StorePath, "tinx.yaml"),
 	} {
 		if _, err := os.Stat(expected); err != nil {
 			t.Fatalf("expected installed artifact %s: %v", expected, err)

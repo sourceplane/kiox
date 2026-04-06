@@ -162,7 +162,7 @@ func resolveProviderScope(root *rootOptions, reference string) (inventoryScope, 
 		if target == nil {
 			return inspectDefaultScope(globalHome, true)
 		}
-		return inspectWorkspaceScope(target.Root, []string{target.Config.Name()}, normalizeInventoryPath(target.Root), true)
+		return inspectWorkspaceScope(target.Root, []string{target.DisplayName()}, normalizeInventoryPath(target.Root), true)
 	case defaultInventoryScopeName, "global":
 		return inspectDefaultScope(globalHome, true)
 	default:
@@ -174,7 +174,7 @@ func resolveProviderScope(root *rootOptions, reference string) (inventoryScope, 
 		if err != nil {
 			return inventoryScope{}, err
 		}
-		return inspectWorkspaceScope(target.Root, []string{target.Config.Name()}, normalizeInventoryPath(activeRoot), true)
+		return inspectWorkspaceScope(target.Root, []string{target.DisplayName()}, normalizeInventoryPath(activeRoot), true)
 	}
 }
 
@@ -255,21 +255,22 @@ func inspectProviderInventory(home string, workspaceScope bool) ([]providerInven
 		return nil, err
 	}
 
-	aliasesByRef := make(map[string][]string)
-	for alias, ref := range aliases {
+	aliasesByKey := make(map[string][]string)
+	for alias, key := range aliases {
 		trimmedAlias := strings.TrimSpace(alias)
-		trimmedRef := strings.TrimSpace(ref)
-		if trimmedAlias == "" || trimmedRef == "" {
+		trimmedKey := strings.TrimSpace(key)
+		if trimmedAlias == "" || trimmedKey == "" {
 			continue
 		}
-		aliasesByRef[trimmedRef] = append(aliasesByRef[trimmedRef], trimmedAlias)
+		aliasesByKey[trimmedKey] = append(aliasesByKey[trimmedKey], trimmedAlias)
 	}
 
-	items := make([]providerInventory, 0, len(providers)+len(aliasesByRef))
+	items := make([]providerInventory, 0, len(providers)+len(aliasesByKey))
 	for _, meta := range providers {
+		providerKey := state.MetadataKey(meta)
 		ref := providerReference(meta)
-		providerAliases := sortedStrings(aliasesByRef[ref])
-		delete(aliasesByRef, ref)
+		providerAliases := sortedStrings(aliasesByKey[providerKey])
+		delete(aliasesByKey, providerKey)
 		items = append(items, providerInventory{
 			Aliases:    providerAliases,
 			Entrypoint: displayEntrypoint(meta),
@@ -281,13 +282,18 @@ func inspectProviderInventory(home string, workspaceScope bool) ([]providerInven
 		})
 	}
 
-	for ref, providerAliases := range aliasesByRef {
+	for key, providerAliases := range aliasesByKey {
 		providerAliases = sortedStrings(providerAliases)
+		ref := state.ProviderRefFromKey(key)
+		version := "-"
+		if _, _, resolvedVersion, err := state.SplitProviderKey(key); err == nil {
+			version = fallbackDisplay(resolvedVersion)
+		}
 		items = append(items, providerInventory{
 			Aliases:    providerAliases,
 			Entrypoint: "-",
 			Ref:        ref,
-			Version:    "-",
+			Version:    version,
 			Status:     "missing",
 			Runtime:    "-",
 			Invoke:     missingProviderInvokeHint(ref, providerAliases, workspaceScope),
