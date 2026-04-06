@@ -45,9 +45,22 @@ type providerInventory struct {
 
 func newListCommand(root *rootOptions) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "list",
+		Use:     "list [workspace|default]",
 		Aliases: []string{"ls"},
-		Short:   "List workspaces and installed providers",
+		Short:   "List providers or inspect workspace inventory",
+		Args:    cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			reference := ""
+			if len(args) == 1 {
+				reference = args[0]
+			}
+			scope, err := resolveProviderScope(root, reference)
+			if err != nil {
+				return err
+			}
+			renderProviderScope(cmd.OutOrStdout(), scope)
+			return nil
+		},
 	}
 	cmd.AddCommand(newListWorkspacesCommand(root))
 	cmd.AddCommand(newListProvidersCommand(root))
@@ -81,19 +94,23 @@ func newListProvidersCommand(root *rootOptions) *cobra.Command {
 		Short: "List installed providers for the current, named, or default scope",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			reference := ""
-			if len(args) == 1 {
-				reference = args[0]
-			}
-			scope, err := resolveProviderScope(root, reference)
-			if err != nil {
-				return err
-			}
-			renderProviderScope(cmd.OutOrStdout(), scope)
-			return nil
+			return runProviderListCommand(cmd, root, args)
 		},
 	}
 	return cmd
+}
+
+func runProviderListCommand(cmd *cobra.Command, root *rootOptions, args []string) error {
+	reference := ""
+	if len(args) == 1 {
+		reference = args[0]
+	}
+	scope, err := resolveProviderScope(root, reference)
+	if err != nil {
+		return err
+	}
+	renderProviderScope(cmd.OutOrStdout(), scope)
+	return nil
 }
 
 func listWorkspaceScopes(globalHome string) ([]inventoryScope, error) {

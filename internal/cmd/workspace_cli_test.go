@@ -43,7 +43,7 @@ func TestInitWorkspaceFromFlagsAutoSelectsWorkspaceAndDispatches(t *testing.T) {
 	runRootCommand(t, []string{"--tinx-home", globalHome, "add", liteCILayout, "as", "lite-ci"})
 	runRootCommand(t, []string{"--tinx-home", globalHome, "add", nodeLayout, "as", "node"})
 
-	runBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "--", "lite-ci", "plan", "--", "node", "build"})
+	runBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "exec", "lite-ci", "plan", "--", "node", "build"})
 	assertWorkspaceShellOutput(t, runBuf)
 	for _, path := range []string{
 		filepath.Join(workspaceRoot, ".workspace", "env"),
@@ -158,7 +158,7 @@ func TestInteractiveWorkspaceShellUsesWorkspaceEnvironment(t *testing.T) {
 	}
 	t.Setenv("SHELL", fakeShell)
 
-	shellBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "--"})
+	shellBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "shell"})
 	if !bytes.Contains(shellBuf.Bytes(), []byte("shell-root="+workspaceRoot)) {
 		t.Fatalf("expected interactive shell to inherit workspace root, got: %s", shellBuf.String())
 	}
@@ -208,17 +208,24 @@ func TestProviderCommandAliasesAndStatus(t *testing.T) {
 			t.Fatalf("expected %q in verbose status output, got:\n%s", expected, statusVerboseBuf.String())
 		}
 	}
-	providersListBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "providers", "list"})
-	if !strings.Contains(providersListBuf.String(), "acme/lite-ci") {
-		t.Fatalf("expected providers alias to work, got:\n%s", providersListBuf.String())
+	listBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "list"})
+	for _, expected := range []string{
+		"Scope: dev",
+		"acme/lite-ci",
+		"lite-ci",
+		"1 provider (1 ready)",
+	} {
+		if !strings.Contains(listBuf.String(), expected) {
+			t.Fatalf("expected %q in list output, got:\n%s", expected, listBuf.String())
+		}
 	}
 
-	updateBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "p", "update", "lite-ci"})
+	updateBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "update", "lite-ci"})
 	if !strings.Contains(updateBuf.String(), "updated providers: lite-ci") {
 		t.Fatalf("unexpected provider update output: %s", updateBuf.String())
 	}
 
-	removeBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "p", "remove", "lite-ci"})
+	removeBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "remove", "lite-ci"})
 	if !strings.Contains(removeBuf.String(), "removed provider lite-ci") {
 		t.Fatalf("unexpected provider remove output: %s", removeBuf.String())
 	}
@@ -229,9 +236,9 @@ func TestProviderCommandAliasesAndStatus(t *testing.T) {
 	if config.HasProviderAlias("lite-ci") {
 		t.Fatalf("expected provider alias to be removed from workspace manifest")
 	}
-	listBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "p", "list"})
-	if !strings.Contains(listBuf.String(), "no providers installed") {
-		t.Fatalf("expected provider list to be empty after removal, got:\n%s", listBuf.String())
+	providersListBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "p", "list"})
+	if !strings.Contains(providersListBuf.String(), "no providers installed") {
+		t.Fatalf("expected provider list to be empty after removal, got:\n%s", providersListBuf.String())
 	}
 }
 
