@@ -1,4 +1,4 @@
-name: provider-ghcr-e2e
+name: package-ghcr-e2e
 
 on:
   push:
@@ -40,7 +40,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Package and push example provider
+      - name: Package and push example package
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -52,12 +52,13 @@ jobs:
             --output testdata/echo-provider/oci \
             --push "${{ steps.vars.outputs.ref }}"
 
-      - name: Install and run from GHCR
+      - name: Install package and run tool from GHCR
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cd testdata/echo-provider
-          ../../bin/tinx --tinx-home "$RUNNER_TEMP/tinx-home" install echo "${{ steps.vars.outputs.ref }}"
-          ../../bin/tinx --tinx-home "$RUNNER_TEMP/tinx-home" run echo plan --intent intent.yaml | tee "$RUNNER_TEMP/echo-run.out"
+          workspace="$RUNNER_TEMP/example-workspace"
+          ./bin/tinx --tinx-home "$RUNNER_TEMP/tinx-home" init "$workspace" -p "${{ steps.vars.outputs.ref }}" as echo
+          cd "$workspace"
+          "$GITHUB_WORKSPACE/bin/tinx" --tinx-home "$RUNNER_TEMP/tinx-home" -- echo plan --intent "$GITHUB_WORKSPACE/testdata/echo-provider/intent.yaml" | tee "$RUNNER_TEMP/echo-run.out"
           grep -q "capability=plan" "$RUNNER_TEMP/echo-run.out"

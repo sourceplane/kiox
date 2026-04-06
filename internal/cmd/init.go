@@ -154,7 +154,7 @@ func buildInitWorkspaceTarget(input initCommandInput) (*workspaceTarget, error) 
 		Metadata: workspace.Metadata{
 			Name: filepath.Base(absTarget),
 		},
-		Providers: map[string]workspace.Provider{},
+		Tools: map[string]workspace.Provider{},
 	}
 	for _, provider := range input.Providers {
 		alias := strings.TrimSpace(provider.Alias)
@@ -164,7 +164,7 @@ func buildInitWorkspaceTarget(input initCommandInput) (*workspaceTarget, error) 
 		if alias == "" {
 			return nil, fmt.Errorf("could not derive alias for provider %q", provider.Source)
 		}
-		config.Providers[alias] = workspace.Provider{Source: normalizeInitSource(provider.Source)}
+		config.Tools[alias] = workspace.Provider{Source: normalizeInitSource(provider.Source)}
 	}
 	if err := config.Normalize(); err != nil {
 		return nil, err

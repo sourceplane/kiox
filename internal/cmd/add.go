@@ -13,8 +13,8 @@ func newAddCommand(root *rootOptions) *cobra.Command {
 	var plainHTTP bool
 
 	cmd := &cobra.Command{
-		Use:   "add <provider> [as <alias>]",
-		Short: "Add a provider to the current or selected workspace",
+		Use:   "add <package> [as <alias>]",
+		Short: "Add a tool to the current or selected workspace",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runAddProviderCommand(cmd, root, args, plainHTTP)
@@ -63,7 +63,9 @@ func runAddProviderCommand(cmd *cobra.Command, root *rootOptions, args []string,
 		return fmt.Errorf("workspace provider alias %q already exists", providerAlias)
 	}
 	providers[providerAlias] = providerSpec
-	target.Config.Providers = providers
+	target.Config.Tools = providers
+	target.Config.Providers = nil
+	target.Config.Spec.Tools = nil
 	target.Config.Spec.Providers = nil
 
 	manifestPath := workspace.ManifestPath(target.Root)
@@ -91,7 +93,7 @@ func parseWorkspaceProvider(args []string) (string, string, error) {
 		return args[2], args[0], nil
 	}
 	if len(args) != 1 {
-		return "", "", fmt.Errorf("add expects <provider> or <provider> as <alias>")
+		return "", "", fmt.Errorf("add expects <package> or <package> as <alias>")
 	}
 	return "", args[0], nil
 }

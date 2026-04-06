@@ -47,7 +47,10 @@ func newStatusCommand(root *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			shellEnv, err := workspace.BuildShellEnvironment(target.Root, result.Home, result.Aliases, workspace.ShellBuildOptions{Out: cmd.ErrOrStderr()})
+			shellEnv, err := workspace.BuildShellEnvironment(target.Root, result.Home, result.Aliases, workspace.ShellBuildOptions{
+				Out:       cmd.ErrOrStderr(),
+				UserState: globalHome,
+			})
 			if err != nil {
 				return err
 			}
@@ -90,7 +93,7 @@ func renderWorkspaceStatus(w io.Writer, target *workspaceTarget, home string, sh
 	writeLine(w, "  shim dir: %s", displayRelativePath(shellEnv.ShimDir))
 	writeLine(w, "  env file: %s", displayRelativePath(shellEnv.EnvFile))
 	writeLine(w, "  path file: %s", displayRelativePath(shellEnv.PathFile))
-	writeLine(w, "  providers dir: %s", displayRelativePath(filepath.Join(home, "providers")))
+	writeLine(w, "  packages dir: %s", displayRelativePath(filepath.Join(home, "packages")))
 	if len(shellEnv.PathEntries) > 0 {
 		entries := make([]string, 0, len(shellEnv.PathEntries))
 		for _, entry := range shellEnv.PathEntries {

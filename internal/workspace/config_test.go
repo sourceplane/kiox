@@ -23,6 +23,9 @@ func TestLoadSupportsTopLevelWorkspaceShape(t *testing.T) {
 	if config.Kind != KindWorkspace {
 		t.Fatalf("expected workspace kind, got %q", config.Kind)
 	}
+	if config.APIVersion != APIVersionV2Alpha1 {
+		t.Fatalf("expected workspace apiVersion %q, got %q", APIVersionV2Alpha1, config.APIVersion)
+	}
 	if !config.HasProviderAlias("echo") {
 		t.Fatalf("expected echo provider alias to be present")
 	}
@@ -34,7 +37,7 @@ func TestLoadSupportsTopLevelWorkspaceShape(t *testing.T) {
 func TestDiscoverSkipsProviderManifestAndFindsParentWorkspace(t *testing.T) {
 	root := t.TempDir()
 	workspacePath := filepath.Join(root, ManifestName)
-	workspaceContent := []byte("apiVersion: tinx.io/v1\nkind: Workspace\nmetadata:\n  name: dev\nspec:\n  providers:\n    echo: ghcr.io/sourceplane/echo-provider:v0.1.0\n")
+	workspaceContent := []byte("apiVersion: tinx.io/v2alpha1\nkind: Workspace\nmetadata:\n  name: dev\ntools:\n  echo:\n    source: ghcr.io/sourceplane/echo-provider:v0.1.0\n")
 	if err := os.WriteFile(workspacePath, workspaceContent, 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +45,7 @@ func TestDiscoverSkipsProviderManifestAndFindsParentWorkspace(t *testing.T) {
 	if err := os.MkdirAll(providerDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	providerManifest := []byte("apiVersion: tinx.io/v1\nkind: Provider\nmetadata:\n  namespace: sourceplane\n  name: example\n  version: v0.1.0\nspec:\n  runtime: binary\n  entrypoint: example\n  platforms:\n    - os: darwin\n      arch: arm64\n      binary: bin/darwin/arm64/example\n")
+	providerManifest := []byte("apiVersion: tinx.io/v2alpha1\nkind: Package\nmetadata:\n  namespace: sourceplane\n  name: example\n  version: v0.1.0\nspec:\n  runtime:\n    type: binary\n    entrypoint: example\n  platforms:\n    - os: darwin\n      arch: arm64\n      binary: bin/darwin/arm64/example\n")
 	if err := os.WriteFile(filepath.Join(providerDir, ManifestName), providerManifest, 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +70,7 @@ func TestSyncRejectsProviderSourceSchemes(t *testing.T) {
 	config := Config{
 		Kind:      KindWorkspace,
 		Workspace: "dev",
-		Providers: map[string]Provider{
+		Tools: map[string]Tool{
 			"echo": {Source: "custom://acme/echo@v1"},
 		},
 	}

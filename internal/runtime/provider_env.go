@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/sourceplane/tinx/internal/manifest"
+	"github.com/sourceplane/tinx/internal/oci"
 	"github.com/sourceplane/tinx/internal/state"
 )
 
@@ -22,12 +22,15 @@ type ProviderEnvironmentSpec struct {
 func ResolveProviderEnvironment(spec ProviderEnvironmentSpec) (map[string]string, []string, error) {
 	providerRoot := state.MetadataStoreRoot(spec.Metadata)
 	if providerRoot == "" {
-		return nil, nil, fmt.Errorf("provider store is missing for %s/%s@%s", spec.Metadata.Namespace, spec.Metadata.Name, spec.Metadata.Version)
+		return nil, nil, fmt.Errorf("package runtime root is missing for %s/%s@%s", spec.Metadata.Namespace, spec.Metadata.Name, spec.Metadata.Version)
 	}
-	providerManifestPath := filepath.Join(providerRoot, "tinx.yaml")
-	provider, err := manifest.Load(providerManifestPath)
+	layoutPath := strings.TrimSpace(spec.Metadata.Source.LayoutPath)
+	if layoutPath == "" {
+		return nil, nil, fmt.Errorf("package layout is missing for %s/%s@%s", spec.Metadata.Namespace, spec.Metadata.Name, spec.Metadata.Version)
+	}
+	provider, err := oci.LoadPackageManifest(layoutPath, spec.Metadata.Source.Tag)
 	if err != nil {
-		return nil, nil, fmt.Errorf("load provider manifest: %w", err)
+		return nil, nil, fmt.Errorf("load package manifest: %w", err)
 	}
 
 	templateVars := providerTemplateVars(spec, providerRoot, provider.AssetsRoot())
@@ -63,20 +66,31 @@ func providerTemplateVars(spec ProviderEnvironmentSpec, providerRoot, assetsRoot
 		workingDir = "."
 	}
 	workspaceRoot := strings.TrimSpace(spec.WorkspaceRoot)
-	workspaceHome := ""
+	workspaceState := ""
 	if workspaceRoot != "" {
-		workspaceHome = spec.Home
+		workspaceState = spec.Home
 	}
 	providerAssets := providerRoot
 	if strings.TrimSpace(assetsRoot) != "" {
 		providerAssets = filepath.Join(providerRoot, filepath.FromSlash(assetsRoot))
 	}
+	packageRef := strings.TrimSpace(spec.Metadata.Namespace) + "/" + strings.TrimSpace(spec.Metadata.Name)
+	runtimeEntrypoint := strings.TrimSpace(spec.Metadata.Entrypoint)
 	return map[string]string{
 		"cwd":                workingDir,
 		"workspace_root":     workspaceRoot,
-		"workspace_home":     workspaceHome,
+		"workspace_state":    workspaceState,
+		"workspace_home":     workspaceState,
+		"tool_name":          strings.TrimSpace(spec.Alias),
+		"package_ref":        packageRef,
+		"package_namespace":  strings.TrimSpace(spec.Metadata.Namespace),
+		"package_name":       strings.TrimSpace(spec.Metadata.Name),
+		"package_version":    strings.TrimSpace(spec.Metadata.Version),
+		"package_home":       providerRoot,
+		"package_assets":     providerAssets,
+		"runtime_entrypoint": runtimeEntrypoint,
 		"provider_alias":     strings.TrimSpace(spec.Alias),
-		"provider_ref":       strings.TrimSpace(spec.Metadata.Namespace) + "/" + strings.TrimSpace(spec.Metadata.Name),
+		"provider_ref":       packageRef,
 		"provider_namespace": strings.TrimSpace(spec.Metadata.Namespace),
 		"provider_name":      strings.TrimSpace(spec.Metadata.Name),
 		"provider_version":   strings.TrimSpace(spec.Metadata.Version),

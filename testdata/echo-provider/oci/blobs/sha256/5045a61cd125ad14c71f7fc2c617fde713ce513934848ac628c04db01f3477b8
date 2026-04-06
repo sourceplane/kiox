@@ -8,6 +8,9 @@
   "capabilities": [
     "plan"
   ],
+  "capabilityDescriptions": {
+    "plan": "Generate a plan"
+  },
   "platforms": [
     {
       "os": "darwin",

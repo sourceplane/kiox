@@ -69,8 +69,11 @@ func Pack(opts PackOptions) (PackResult, error) {
 		Description: provider.Metadata.Description,
 		Homepage:    provider.Metadata.Homepage,
 		License:     provider.Metadata.License,
-		Runtime:     provider.Spec.Runtime,
-		Entrypoint:  provider.Spec.Entrypoint,
+		Runtime:     provider.Spec.Runtime.Type,
+		Entrypoint:  provider.Spec.Runtime.Entrypoint,
+		Image:       provider.Spec.Runtime.Image,
+		Module:      provider.Spec.Runtime.Module,
+		Interpreter: provider.Spec.Runtime.Interpreter,
 	}, "", "  ")
 	if err != nil {
 		return PackResult{}, fmt.Errorf("marshal config: %w", err)
@@ -80,11 +83,15 @@ func Pack(opts PackOptions) (PackResult, error) {
 		Name:                   provider.Metadata.Name,
 		Version:                provider.Metadata.Version,
 		Description:            provider.Metadata.Description,
-		Entrypoint:             provider.Spec.Entrypoint,
-		Runtime:                provider.Spec.Runtime,
+		Entrypoint:             provider.Spec.Runtime.Entrypoint,
+		Runtime:                provider.Spec.Runtime.Type,
+		Image:                  provider.Spec.Runtime.Image,
+		Module:                 provider.Spec.Runtime.Module,
+		Interpreter:            provider.Spec.Runtime.Interpreter,
 		Capabilities:           provider.CapabilityNames(),
 		CapabilityDescriptions: capabilityDescriptions(provider),
 		Platforms:              toMetadataPlatforms(provider.Spec.Platforms),
+		Dependencies:           copyCapabilityDescriptions(provider.Spec.Dependencies),
 	}, "", "  ")
 	if err != nil {
 		return PackResult{}, fmt.Errorf("marshal metadata: %w", err)
@@ -137,7 +144,7 @@ func Pack(opts PackOptions) (PackResult, error) {
 	imageManifestBytes, err := json.MarshalIndent(ImageManifest{
 		SchemaVersion: 2,
 		MediaType:     ocispec.MediaTypeImageManifest,
-		ArtifactType:  ArtifactTypeProvider,
+		ArtifactType:  ArtifactTypePackage,
 		Config:        configDesc,
 		Layers:        layers,
 		Annotations: map[string]string{
@@ -168,11 +175,17 @@ func Pack(opts PackOptions) (PackResult, error) {
 		return PackResult{}, fmt.Errorf("write oci-layout: %w", err)
 	}
 
-	return PackResult{ProviderRef: provider.Ref(), Version: provider.Metadata.Version, Tag: tag, LayoutDir: opts.OutputDir}, nil
+	return PackResult{
+		PackageRef:  provider.Ref(),
+		ProviderRef: provider.Ref(),
+		Version:     provider.Metadata.Version,
+		Tag:         tag,
+		LayoutDir:   opts.OutputDir,
+	}, nil
 }
 
 func BinaryMediaType(goos, goarch string) string {
-	return fmt.Sprintf("application/vnd.tinx.provider.binary.%s.%s.v1", goos, goarch)
+	return fmt.Sprintf("application/vnd.tinx.runtime.binary.%s.%s.v1", goos, goarch)
 }
 
 func InstallMetadata(layoutPath, tag, activationHome, storeHome, alias string, out io.Writer) (state.ProviderMetadata, error) {
@@ -183,7 +196,7 @@ func InstallMetadata(layoutPath, tag, activationHome, storeHome, alias string, o
 }
 
 func installMetadata(layoutPath, tag, activationHome, storeHome, alias, ref string, plainHTTP bool, tracker *progress.Tracker) (state.ProviderMetadata, error) {
-	_, _, config, metadata, manifestBytes, metadataBytes, err := readLayout(layoutPath, tag)
+	_, _, config, metadata, _, _, err := readLayout(layoutPath, tag)
 	if err != nil {
 		return state.ProviderMetadata{}, err
 	}
@@ -194,21 +207,24 @@ func installMetadata(layoutPath, tag, activationHome, storeHome, alias, ref stri
 		return state.ProviderMetadata{}, err
 	}
 	storeID := providerStoreID(config, manifestDescriptor.Digest.String())
-	storeRoot := state.StoreRoot(storeHome, storeID)
 	storeLayoutPath := state.StoreLayoutPath(storeHome, storeID)
+	runtimeRoot := state.RuntimeRoot(storeHome, storeID)
 	if err := os.MkdirAll(storeLayoutPath, 0o755); err != nil {
-		return state.ProviderMetadata{}, fmt.Errorf("create provider store: %w", err)
+		return state.ProviderMetadata{}, fmt.Errorf("create package store: %w", err)
 	}
-	tracker.Step("cache", "preparing provider cache")
-	if err := copyDirectory(layoutPath, storeLayoutPath); err != nil {
-		return state.ProviderMetadata{}, fmt.Errorf("cache OCI layout: %w", err)
+	if err := os.MkdirAll(runtimeRoot, 0o755); err != nil {
+		return state.ProviderMetadata{}, fmt.Errorf("create runtime root: %w", err)
 	}
-	tracker.Info("cache", "cached OCI blobs")
-	if err := os.WriteFile(filepath.Join(storeRoot, "tinx.yaml"), manifestBytes, 0o644); err != nil {
-		return state.ProviderMetadata{}, fmt.Errorf("cache manifest: %w", err)
-	}
-	if err := os.WriteFile(filepath.Join(storeRoot, "provider-metadata.json"), metadataBytes, 0o644); err != nil {
-		return state.ProviderMetadata{}, fmt.Errorf("cache provider metadata: %w", err)
+	tracker.Step("cache", "preparing package cache")
+	if _, err := os.Stat(filepath.Join(storeLayoutPath, "index.json")); os.IsNotExist(err) {
+		if err := copyDirectory(layoutPath, storeLayoutPath); err != nil {
+			return state.ProviderMetadata{}, fmt.Errorf("cache OCI layout: %w", err)
+		}
+		tracker.Info("cache", "cached OCI blobs")
+	} else if err == nil {
+		tracker.Cached("cache", "reused package cache")
+	} else {
+		return state.ProviderMetadata{}, fmt.Errorf("check package cache: %w", err)
 	}
 
 	meta := state.ProviderMetadata{
@@ -216,7 +232,7 @@ func installMetadata(layoutPath, tag, activationHome, storeHome, alias, ref stri
 		Name:                   config.Name,
 		Version:                config.Version,
 		StoreID:                storeID,
-		StorePath:              storeRoot,
+		StorePath:              runtimeRoot,
 		Description:            config.Description,
 		Homepage:               config.Homepage,
 		License:                config.License,
@@ -225,13 +241,21 @@ func installMetadata(layoutPath, tag, activationHome, storeHome, alias, ref stri
 		Capabilities:           append([]string(nil), metadata.Capabilities...),
 		CapabilityDescriptions: copyCapabilityDescriptions(metadata.CapabilityDescriptions),
 		Platforms:              toStatePlatforms(metadata.Platforms),
-		Source:                 state.Source{LayoutPath: storeLayoutPath, Tag: tag, Ref: resolvedSourceRef(ref, manifestDescriptor.Digest.String()), PlainHTTP: plainHTTP},
-		InstalledAt:            time.Now().UTC(),
+		Dependencies:           copyCapabilityDescriptions(metadata.Dependencies),
+		Source: state.Source{
+			LayoutPath: storeLayoutPath,
+			Tag:        tag,
+			Ref:        strings.TrimSpace(ref),
+			Resolved:   resolvedSourceRef(ref, manifestDescriptor.Digest.String()),
+			Digest:     manifestDescriptor.Digest.String(),
+			PlainHTTP:  plainHTTP,
+		},
+		InstalledAt: time.Now().UTC(),
 	}
 	if err := state.SaveProviderMetadata(activationHome, meta); err != nil {
 		return state.ProviderMetadata{}, err
 	}
-	tracker.Info("install", "persisted provider metadata")
+	tracker.Info("install", "persisted package metadata")
 	if err := state.SaveInstallSource(activationHome, meta.Namespace, meta.Name, meta.Version, meta.Source); err != nil {
 		return state.ProviderMetadata{}, err
 	}
@@ -246,7 +270,7 @@ func installMetadata(layoutPath, tag, activationHome, storeHome, alias, ref stri
 		}
 		tracker.Info("install", fmt.Sprintf("updated alias %s", alias))
 	}
-	tracker.Done("cache", "provider cached locally")
+	tracker.Done("cache", "package cached locally")
 	return meta, nil
 }
 
@@ -362,6 +386,11 @@ func resolvedSourceRef(ref, manifestDigest string) string {
 	return repository + "@" + strings.TrimSpace(manifestDigest)
 }
 
+func LoadPackageManifest(layoutPath, tag string) (manifest.Package, error) {
+	pkg, _, _, _, _, _, err := readLayout(layoutPath, tag)
+	return pkg, err
+}
+
 func readLayout(layoutPath, tag string) (manifest.Provider, ProviderManifestView, ProviderConfig, ProviderMetadata, []byte, []byte, error) {
 	var provider manifest.Provider
 	var view ProviderManifestView
@@ -393,7 +422,7 @@ func readLayout(layoutPath, tag string) (manifest.Provider, ProviderManifestView
 	view = ProviderManifestView{ConfigDescriptor: imageManifest.Config, ManifestDescriptor: manifestDescriptor, BinaryDescriptors: map[string]ocispec.Descriptor{}}
 	for _, layer := range imageManifest.Layers {
 		switch layer.MediaType {
-		case MediaTypeManifest:
+		case MediaTypeManifest, LegacyMediaTypeManifest:
 			view.ManifestDescriptor = layer
 			manifestBytes, err = readBlob(layoutPath, layer)
 			if err != nil {
@@ -405,7 +434,7 @@ func readLayout(layoutPath, tag string) (manifest.Provider, ProviderManifestView
 			if err := provider.Normalize(); err != nil {
 				return provider, view, config, metadata, nil, nil, err
 			}
-		case MediaTypeMetadata:
+		case MediaTypeMetadata, LegacyMediaTypeMetadata:
 			view.MetadataDescriptor = layer
 			metadataBytes, err = readBlob(layoutPath, layer)
 			if err != nil {
@@ -414,7 +443,7 @@ func readLayout(layoutPath, tag string) (manifest.Provider, ProviderManifestView
 			if err := json.Unmarshal(metadataBytes, &metadata); err != nil {
 				return provider, view, config, metadata, nil, nil, fmt.Errorf("decode provider metadata layer: %w", err)
 			}
-		case MediaTypeAssets:
+		case MediaTypeAssets, LegacyMediaTypeAssets:
 			layerCopy := layer
 			view.AssetsDescriptor = &layerCopy
 		default:
@@ -442,6 +471,9 @@ func resolveManifest(layoutPath, tag string) (ocispec.Descriptor, error) {
 		return idx.Manifests[0], nil
 	}
 	for _, descriptor := range idx.Manifests {
+		if descriptor.Digest.String() == tag {
+			return descriptor, nil
+		}
 		if descriptor.Annotations["org.opencontainers.image.ref.name"] == tag {
 			return descriptor, nil
 		}

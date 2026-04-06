@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 2,
+  "mediaType": "application/vnd.oci.image.manifest.v1+json",
+  "artifactType": "application/vnd.tinx.package.v2",
+  "config": {
+    "mediaType": "application/vnd.tinx.package.config.v2+json",
+    "digest": "sha256:e9d60bc4e70badf64672e2312919c951d11f4e4ff08de78c4d162c77015bae2c",
+    "size": 265
+  },
+  "layers": [
+    {
+      "mediaType": "application/vnd.tinx.package.manifest.v2+yaml",
+      "digest": "sha256:fcf8c86dc2d859201b12a50bd99a40c8c9e840b3cee3e42808b7fc52a482230f",
+      "size": 678,
+      "annotations": {
+        "org.opencontainers.image.title": "tinx.yaml"
+      }
+    },
+    {
+      "mediaType": "application/vnd.tinx.package.metadata.v2+json",
+      "digest": "sha256:5045a61cd125ad14c71f7fc2c617fde713ce513934848ac628c04db01f3477b8",
+      "size": 754,
+      "annotations": {
+        "org.opencontainers.image.title": "metadata.json"
+      }
+    },
+    {
+      "mediaType": "application/vnd.tinx.package.assets.v2+tar",
+      "digest": "sha256:6de7d4f402185d3c50c3508b20c6035ec5a32127f79ae99a36e16fe41e46000b",
+      "size": 2560,
+      "annotations": {
+        "org.opencontainers.image.title": "assets"
+      }
+    },
+    {
+      "mediaType": "application/vnd.tinx.runtime.binary.darwin.amd64.v1",
+      "digest": "sha256:b0acb3b9daa6fb55b0e4dd8c765e1c9d5607dc0f8d3fb913c7b057ffae3501b1",
+      "size": 1622256,
+      "annotations": {
+        "io.tinx.platform": "darwin/amd64",
+        "org.opencontainers.image.title": "bin/darwin/amd64/echo-provider"
+      }
+    },
+    {
+      "mediaType": "application/vnd.tinx.runtime.binary.darwin.arm64.v1",
+      "digest": "sha256:6431a69789e92541abfce214b55db5862800048079b434a1532a501c507acbf9",
+      "size": 1606418,
+      "annotations": {
+        "io.tinx.platform": "darwin/arm64",
+        "org.opencontainers.image.title": "bin/darwin/arm64/echo-provider"
+      }
+    },
+    {
+      "mediaType": "application/vnd.tinx.runtime.binary.linux.amd64.v1",
+      "digest": "sha256:cf0737f15838d26789b0bf4c8ed7e4f4308c9f39cd6107503141c9a1556160cd",
+      "size": 1511608,
+      "annotations": {
+        "io.tinx.platform": "linux/amd64",
+        "org.opencontainers.image.title": "bin/linux/amd64/echo-provider"
+      }
+    },
+    {
+      "mediaType": "application/vnd.tinx.runtime.binary.linux.arm64.v1",
+      "digest": "sha256:d0f20d546f5d91d58074ec27bc000a1c808ce9d2e18857bcbca6bdd7f382483b",
+      "size": 1573048,
+      "annotations": {
+        "io.tinx.platform": "linux/arm64",
+        "org.opencontainers.image.title": "bin/linux/arm64/echo-provider"
+      }
+    }
+  ],
+  "annotations": {
+    "org.opencontainers.image.title": "sourceplane/echo-provider",
+    "org.opencontainers.image.version": "v0.1.0"
+  }
+}

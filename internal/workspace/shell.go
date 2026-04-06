@@ -9,13 +9,13 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/sourceplane/tinx/internal/oci"
 	tinxruntime "github.com/sourceplane/tinx/internal/runtime"
 	"github.com/sourceplane/tinx/internal/state"
 )
 
 type ShellBuildOptions struct {
-	Out io.Writer
+	Out       io.Writer
+	UserState string
 }
 
 type ShellEnvironment struct {
@@ -41,13 +41,21 @@ func BuildShellEnvironment(root, home string, aliases map[string]string, opts Sh
 
 	envFile := EnvPath(root)
 	pathFile := PathPath(root)
+	userState := strings.TrimSpace(opts.UserState)
+	if userState == "" {
+		userState = home
+	}
 	env := map[string]string{
-		"TINX_HOME":                home,
+		"TINX_HOME":                userState,
+		"TINX_USER_STATE":          userState,
+		"TINX_CONTENT_STORE":       filepath.Join(userState, "store"),
 		"TINX_WORKSPACE_ROOT":      root,
+		"TINX_WORKSPACE_STATE":     home,
 		"TINX_WORKSPACE_HOME":      home,
 		"TINX_WORKSPACE_ENV_FILE":  envFile,
 		"TINX_WORKSPACE_PATH_FILE": pathFile,
-		"TINX_WORKSPACE_PROVIDERS": filepath.Join(home, "providers"),
+		"TINX_WORKSPACE_PACKAGES":  filepath.Join(home, "packages"),
+		"TINX_WORKSPACE_PROVIDERS": filepath.Join(home, "packages"),
 	}
 	pathEntries := []string{shimDir}
 
@@ -56,6 +64,7 @@ func BuildShellEnvironment(root, home string, aliases map[string]string, opts Sh
 		aliasNames = append(aliasNames, alias)
 	}
 	sort.Strings(aliasNames)
+	manager := tinxruntime.NewManager()
 
 	for _, alias := range aliasNames {
 		providerRef := strings.TrimSpace(aliases[alias])
@@ -66,29 +75,24 @@ func BuildShellEnvironment(root, home string, aliases map[string]string, opts Sh
 		if err != nil {
 			return ShellEnvironment{}, err
 		}
-		binaryPath := oci.CurrentBinaryPath(meta)
-		if info, err := os.Stat(binaryPath); err != nil || info.IsDir() {
-			binaryPath, err = oci.MaterializeRuntime(meta, goruntime.GOOS, goruntime.GOARCH, opts.Out)
-			if err != nil {
-				return ShellEnvironment{}, err
-			}
-		}
-		providerEnv, providerPath, err := tinxruntime.ResolveProviderEnvironment(tinxruntime.ProviderEnvironmentSpec{
+		prepared, err := manager.PrepareTool(tinxruntime.PrepareRequest{
 			Home:          home,
 			WorkspaceRoot: root,
-			Alias:         alias,
-			BinaryPath:    binaryPath,
+			ToolName:      alias,
 			Metadata:      meta,
+			GOOS:          goruntime.GOOS,
+			GOARCH:        goruntime.GOARCH,
+			Out:           opts.Out,
 		})
 		if err != nil {
 			return ShellEnvironment{}, err
 		}
-		if err := mergeWorkspaceEnvironment(env, providerEnv, alias); err != nil {
+		if err := mergeWorkspaceEnvironment(env, prepared.Env, alias); err != nil {
 			return ShellEnvironment{}, err
 		}
-		pathEntries = appendWorkspacePaths(pathEntries, providerPath...)
-		addAliasEnvironment(env, alias, meta, binaryPath, home)
-		if err := writeProviderShim(filepath.Join(shimDir, alias), binaryPath); err != nil {
+		pathEntries = appendWorkspacePaths(pathEntries, prepared.PathEntries...)
+		addAliasEnvironment(env, alias, meta, prepared.Executable, home)
+		if err := writeProviderShim(filepath.Join(shimDir, alias), prepared.Executable); err != nil {
 			return ShellEnvironment{}, err
 		}
 	}
@@ -157,6 +161,12 @@ func addAliasEnvironment(env map[string]string, alias string, meta state.Provide
 	}
 	providerRoot := state.MetadataStoreRoot(meta)
 	ref := strings.TrimSpace(meta.Namespace) + "/" + strings.TrimSpace(meta.Name)
+	env["TINX_TOOL_"+aliasToken+"_PACKAGE"] = ref
+	env["TINX_TOOL_"+aliasToken+"_VERSION"] = strings.TrimSpace(meta.Version)
+	env["TINX_TOOL_"+aliasToken+"_HOME"] = providerRoot
+	env["TINX_TOOL_"+aliasToken+"_RUNTIME"] = strings.TrimSpace(meta.Runtime)
+	env["TINX_TOOL_"+aliasToken+"_ENTRYPOINT"] = strings.TrimSpace(meta.Entrypoint)
+	env["TINX_TOOL_"+aliasToken+"_EXECUTABLE"] = binaryPath
 	env["TINX_PROVIDER_"+aliasToken+"_REF"] = ref
 	env["TINX_PROVIDER_"+aliasToken+"_HOME"] = providerRoot
 	env["TINX_PROVIDER_"+aliasToken+"_BINARY"] = binaryPath

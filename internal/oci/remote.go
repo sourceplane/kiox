@@ -174,10 +174,18 @@ func cachedRemoteInstall(home, ref string, requireRuntimeBlobs bool) (state.Prov
 	}
 	requestedRepository, requestedTag := parseReference(ref)
 	for _, meta := range providers {
-		if meta.Source.Ref == "" || meta.Source.Ref != ref {
-			resolvedRepository, _ := parseReference(meta.Source.Ref)
-			if requestedRepository != resolvedRepository || strings.TrimSpace(requestedTag) == "" || strings.TrimSpace(requestedTag) != strings.TrimSpace(meta.Version) {
-				continue
+		matchesRequestedRef := strings.TrimSpace(meta.Source.Ref) == ref || strings.TrimSpace(meta.Source.Resolved) == ref
+		if !matchesRequestedRef {
+			resolvedRepository, resolvedTag := parseReference(meta.Source.Resolved)
+			requestedTag = strings.TrimSpace(requestedTag)
+			switch {
+			case requestedRepository == resolvedRepository && requestedTag != "" && requestedTag == strings.TrimSpace(meta.Source.Digest):
+			case requestedRepository == resolvedRepository && requestedTag != "" && requestedTag == strings.TrimSpace(resolvedTag):
+			default:
+				resolvedRepository, _ = parseReference(meta.Source.Ref)
+				if requestedRepository != resolvedRepository || requestedTag == "" || requestedTag != strings.TrimSpace(meta.Version) {
+					continue
+				}
 			}
 		}
 		if requireRuntimeBlobs && !layoutHasRuntimeBlobs(meta.Source.LayoutPath, meta.Source.Tag) {

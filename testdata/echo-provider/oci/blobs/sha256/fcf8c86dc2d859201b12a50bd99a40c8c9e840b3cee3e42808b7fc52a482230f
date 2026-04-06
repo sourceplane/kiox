@@ -1,13 +1,14 @@
-apiVersion: tinx.io/v1
-kind: Provider
+apiVersion: tinx.io/v2alpha1
+kind: Package
 metadata:
   namespace: sourceplane
   name: echo-provider
   version: v0.1.0
   description: Test provider for tinx packaging and installation
 spec:
-  runtime: binary
-  entrypoint: echo-provider
+  runtime:
+    type: binary
+    entrypoint: echo-provider
   platforms:
     - os: darwin
       arch: amd64

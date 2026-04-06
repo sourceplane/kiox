@@ -8,13 +8,13 @@ import (
 )
 
 func ListInstalledProviders(home string) ([]ProviderMetadata, error) {
-	providersRoot := filepath.Join(home, "providers")
-	namespaces, err := os.ReadDir(providersRoot)
+	packagesRoot := filepath.Join(home, "packages")
+	namespaces, err := os.ReadDir(packagesRoot)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("read providers root: %w", err)
+		return nil, fmt.Errorf("read packages root: %w", err)
 	}
 
 	providers := make([]ProviderMetadata, 0)
@@ -23,17 +23,17 @@ func ListInstalledProviders(home string) ([]ProviderMetadata, error) {
 			continue
 		}
 		namespace := namespaceEntry.Name()
-		providerEntries, err := os.ReadDir(filepath.Join(providersRoot, namespace))
+		providerEntries, err := os.ReadDir(filepath.Join(packagesRoot, namespace))
 		if err != nil {
-			return nil, fmt.Errorf("read provider namespace %q: %w", namespace, err)
+			return nil, fmt.Errorf("read package namespace %q: %w", namespace, err)
 		}
 		for _, providerEntry := range providerEntries {
 			if !providerEntry.IsDir() {
 				continue
 			}
-			versions, err := os.ReadDir(filepath.Join(providersRoot, namespace, providerEntry.Name()))
+			versions, err := os.ReadDir(filepath.Join(packagesRoot, namespace, providerEntry.Name()))
 			if err != nil {
-				return nil, fmt.Errorf("read provider versions for %q/%q: %w", namespace, providerEntry.Name(), err)
+				return nil, fmt.Errorf("read package versions for %q/%q: %w", namespace, providerEntry.Name(), err)
 			}
 			for _, versionEntry := range versions {
 				if !versionEntry.IsDir() {

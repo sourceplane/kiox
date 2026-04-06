@@ -15,8 +15,8 @@ import (
 func newProviderCommand(root *rootOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "provider",
-		Aliases: []string{"providers", "p"},
-		Short:   "Manage workspace providers and provider inventory",
+		Aliases: []string{"providers", "tool", "tools", "p"},
+		Short:   "Manage workspace tools and package inventory",
 	}
 	cmd.AddCommand(newProviderListCommand(root))
 	cmd.AddCommand(newProviderAddCommand(root))
@@ -28,7 +28,7 @@ func newProviderCommand(root *rootOptions) *cobra.Command {
 func newProviderListCommand(root *rootOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list [workspace|default]",
-		Short: "List providers for the current, named, or default scope",
+		Short: "List tools for the current, named, or default scope",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runProviderListCommand(cmd, root, args)
@@ -40,8 +40,8 @@ func newProviderListCommand(root *rootOptions) *cobra.Command {
 func newProviderAddCommand(root *rootOptions) *cobra.Command {
 	var plainHTTP bool
 	cmd := &cobra.Command{
-		Use:   "add <provider> [as <alias>]",
-		Short: "Add a provider to the current or selected workspace",
+		Use:   "add <package> [as <alias>]",
+		Short: "Add a tool to the current or selected workspace",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runAddProviderCommand(cmd, root, args, plainHTTP)
@@ -54,7 +54,7 @@ func newProviderAddCommand(root *rootOptions) *cobra.Command {
 func newProviderRemoveCommand(root *rootOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "remove <provider-or-alias>",
-		Short: "Remove a provider from the current or selected workspace",
+		Short: "Remove a tool from the current or selected workspace",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runRemoveProviderCommand(cmd, root, args[0])
@@ -66,7 +66,7 @@ func newProviderRemoveCommand(root *rootOptions) *cobra.Command {
 func newProviderUpdateCommand(root *rootOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update [provider-or-alias...]",
-		Short: "Refresh provider metadata for the current or selected workspace",
+		Short: "Refresh tool metadata for the current or selected workspace",
 		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runUpdateProviderCommand(cmd, root, args)
@@ -91,7 +91,9 @@ func runRemoveProviderCommand(cmd *cobra.Command, root *rootOptions, selector st
 	}
 	providers := cloneWorkspaceProviders(target.Config)
 	delete(providers, alias)
-	target.Config.Providers = providers
+	target.Config.Tools = providers
+	target.Config.Providers = nil
+	target.Config.Spec.Tools = nil
 	target.Config.Spec.Providers = nil
 	if ref != "" && !providerKeyStillReferenced(currentAliases, target.Config, alias, ref) {
 		if err := removeProviderCache(home, ref); err != nil {

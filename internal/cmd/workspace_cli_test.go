@@ -46,9 +46,9 @@ func TestInitWorkspaceFromFlagsAutoSelectsWorkspaceAndDispatches(t *testing.T) {
 	runBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "exec", "lite-ci", "plan", "--", "node", "build"})
 	assertWorkspaceShellOutput(t, runBuf)
 	for _, path := range []string{
-		filepath.Join(workspaceRoot, ".workspace", "env"),
-		filepath.Join(workspaceRoot, ".workspace", "path"),
-		filepath.Join(workspaceRoot, ".workspace", "providers"),
+		filepath.Join(workspaceRoot, ".tinx", "env"),
+		filepath.Join(workspaceRoot, ".tinx", "path"),
+		filepath.Join(workspaceRoot, ".tinx", "packages"),
 	} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("expected workspace runtime artifact %s: %v", path, err)
@@ -99,12 +99,16 @@ func TestInitWorkspaceFromConfigFileAndUseOneShotCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	configPath := filepath.Join(workspaceRoot, "providers.tx.yaml")
-	manifest := fmt.Sprintf(`kind: workspace
-workspace: dev
+	manifest := fmt.Sprintf(`apiVersion: tinx.io/v2alpha1
+kind: Workspace
+metadata:
+  name: dev
 
-providers:
-  lite-ci: %s
-  node: %s
+tools:
+  lite-ci:
+    source: %s
+  node:
+    source: %s
 `, liteCILayout, nodeLayout)
 	if err := os.WriteFile(configPath, []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
@@ -162,10 +166,10 @@ func TestInteractiveWorkspaceShellUsesWorkspaceEnvironment(t *testing.T) {
 	if !bytes.Contains(shellBuf.Bytes(), []byte("shell-root="+workspaceRoot)) {
 		t.Fatalf("expected interactive shell to inherit workspace root, got: %s", shellBuf.String())
 	}
-	if !bytes.Contains(shellBuf.Bytes(), []byte(filepath.Join(workspaceRoot, ".workspace", "env"))) {
+	if !bytes.Contains(shellBuf.Bytes(), []byte(filepath.Join(workspaceRoot, ".tinx", "env"))) {
 		t.Fatalf("expected interactive shell env file, got: %s", shellBuf.String())
 	}
-	if !bytes.Contains(shellBuf.Bytes(), []byte(filepath.Join(workspaceRoot, ".workspace", "bin"))) {
+	if !bytes.Contains(shellBuf.Bytes(), []byte(filepath.Join(workspaceRoot, ".tinx", "bin"))) {
 		t.Fatalf("expected interactive shell path to include workspace shims, got: %s", shellBuf.String())
 	}
 }
@@ -201,8 +205,8 @@ func TestProviderCommandAliasesAndStatus(t *testing.T) {
 	statusVerboseBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "status", "--verbose"})
 	for _, expected := range []string{
 		"details:",
-		"env file: " + displayRelativePath(filepath.Join(workspaceRoot, ".workspace", "env")),
-		"path file: " + displayRelativePath(filepath.Join(workspaceRoot, ".workspace", "path")),
+		"env file: " + displayRelativePath(filepath.Join(workspaceRoot, ".tinx", "env")),
+		"path file: " + displayRelativePath(filepath.Join(workspaceRoot, ".tinx", "path")),
 	} {
 		if !strings.Contains(statusVerboseBuf.String(), expected) {
 			t.Fatalf("expected %q in verbose status output, got:\n%s", expected, statusVerboseBuf.String())
@@ -255,11 +259,11 @@ func TestWorkspaceProvidersReuseGlobalStoreAcrossWorkspaces(t *testing.T) {
 	runRootCommand(t, []string{"--tinx-home", globalHome, "init", workspaceTwo})
 	runRootCommand(t, []string{"--tinx-home", globalHome, "add", layoutPath, "as", "lite-ci"})
 
-	metaOne, err := state.LoadProviderMetadata(filepath.Join(workspaceOne, ".workspace"), "acme", "lite-ci", "v0.1.0")
+	metaOne, err := state.LoadProviderMetadata(workspacepkg.Home(workspaceOne), "acme", "lite-ci", "v0.1.0")
 	if err != nil {
 		t.Fatalf("load workspace one provider metadata: %v", err)
 	}
-	metaTwo, err := state.LoadProviderMetadata(filepath.Join(workspaceTwo, ".workspace"), "acme", "lite-ci", "v0.1.0")
+	metaTwo, err := state.LoadProviderMetadata(workspacepkg.Home(workspaceTwo), "acme", "lite-ci", "v0.1.0")
 	if err != nil {
 		t.Fatalf("load workspace two provider metadata: %v", err)
 	}
@@ -272,10 +276,10 @@ func TestWorkspaceProvidersReuseGlobalStoreAcrossWorkspaces(t *testing.T) {
 	if metaOne.StorePath != metaTwo.StorePath {
 		t.Fatalf("expected shared store path, got %q and %q", metaOne.StorePath, metaTwo.StorePath)
 	}
-	if _, err := os.Stat(filepath.Join(metaOne.StorePath, "oci", "index.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(metaOne.Source.LayoutPath, "index.json")); err != nil {
 		t.Fatalf("expected shared OCI store layout: %v", err)
 	}
-	storeEntries, err := os.ReadDir(filepath.Join(globalHome, "store"))
+	storeEntries, err := os.ReadDir(filepath.Join(globalHome, "store", "oci"))
 	if err != nil {
 		t.Fatalf("read global store: %v", err)
 	}
@@ -303,13 +307,16 @@ func TestWorkspaceLockPinsUnversionedRegistrySourceUntilUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load initial lock: %v", err)
 	}
-	if len(lock.Providers) != 1 {
-		t.Fatalf("expected one locked provider, got %#v", lock.Providers)
+	if len(lock.Tools) != 1 || len(lock.Packages) != 1 {
+		t.Fatalf("expected one locked tool and package, got %#v", lock)
 	}
-	if !strings.HasPrefix(lock.Providers[0].Resolved, registryHost+"/acme/lite-ci@sha256:") {
-		t.Fatalf("expected initial resolved ref to pin an immutable digest, got %q", lock.Providers[0].Resolved)
+	if lock.ManifestHash == "" {
+		t.Fatalf("expected manifest hash to be recorded, got %#v", lock)
 	}
-	initialResolved := lock.Providers[0].Resolved
+	if !strings.HasPrefix(lock.Packages[0].Resolved, registryHost+"/acme/lite-ci@sha256:") {
+		t.Fatalf("expected initial resolved ref to pin an immutable digest, got %q", lock.Packages[0].Resolved)
+	}
+	initialResolved := lock.Packages[0].Resolved
 
 	setProviderVersion(t, providerProject, "v0.2.0")
 	releaseProviderRef(t, globalHome, providerProject, latestRef)
@@ -324,10 +331,10 @@ func TestWorkspaceLockPinsUnversionedRegistrySourceUntilUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load updated lock: %v", err)
 	}
-	if !strings.HasPrefix(updatedLock.Providers[0].Resolved, registryHost+"/acme/lite-ci@sha256:") {
-		t.Fatalf("expected updated resolved ref to pin an immutable digest, got %q", updatedLock.Providers[0].Resolved)
+	if !strings.HasPrefix(updatedLock.Packages[0].Resolved, registryHost+"/acme/lite-ci@sha256:") {
+		t.Fatalf("expected updated resolved ref to pin an immutable digest, got %q", updatedLock.Packages[0].Resolved)
 	}
-	if updatedLock.Providers[0].Resolved == initialResolved {
+	if updatedLock.Packages[0].Resolved == initialResolved {
 		t.Fatalf("expected provider update to move to a new immutable digest")
 	}
 	updatedStatusBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "status"})
@@ -364,7 +371,7 @@ func TestWorkspaceCreateListCurrentAndDelete(t *testing.T) {
 	for _, path := range []string{
 		filepath.Join(workspaceRoot, "tinx.yaml"),
 		filepath.Join(workspaceRoot, "tinx.lock"),
-		filepath.Join(workspaceRoot, ".workspace"),
+		filepath.Join(workspaceRoot, ".tinx"),
 	} {
 		if _, err := os.Stat(path); !os.IsNotExist(err) {
 			t.Fatalf("expected workspace artifact %s to be removed", path)
@@ -517,7 +524,7 @@ import (
 
 func main() {
 	args := os.Args[1:]
-	fmt.Printf("lite-ci-env=%s\n", os.Getenv("LITE_CI_PROVIDER_REF"))
+	fmt.Printf("lite-ci-env=%s\n", os.Getenv("LITE_CI_PACKAGE_REF"))
 	fmt.Printf("lite-ci-args=%s\n", strings.Join(args, " "))
 	for index, arg := range args {
 		if arg != "--" {
@@ -551,7 +558,7 @@ import (
 )
 
 func main() {
-	fmt.Printf("node-env=%s\n", os.Getenv("NODE_PROVIDER_REF"))
+	fmt.Printf("node-env=%s\n", os.Getenv("NODE_PACKAGE_REF"))
 	fmt.Printf("node-args=%s\n", strings.Join(os.Args[1:], " "))
 }
 `)
@@ -567,8 +574,8 @@ func createCapabilityProviderProject(t *testing.T, dir, namespace, name, capabil
 		t.Fatal(err)
 	}
 	manifest := strings.Join([]string{
-		"apiVersion: tinx.io/v1",
-		"kind: Provider",
+		"apiVersion: tinx.io/v2alpha1",
+		"kind: Package",
 		"",
 		"metadata:",
 		fmt.Sprintf("  namespace: %s", namespace),
@@ -576,10 +583,11 @@ func createCapabilityProviderProject(t *testing.T, dir, namespace, name, capabil
 		"  version: v0.1.0",
 		"",
 		"spec:",
-		"  runtime: binary",
-		fmt.Sprintf("  entrypoint: %s", name),
+		"  runtime:",
+		"    type: binary",
+		fmt.Sprintf("    entrypoint: %s", name),
 		"  env:",
-		fmt.Sprintf("    %s: ${provider_ref}", manifestEnvName(name)),
+		fmt.Sprintf("    %s: ${package_ref}", manifestEnvName(name)),
 		"  platforms:",
 		fmt.Sprintf("    - os: %s", goruntime.GOOS),
 		fmt.Sprintf("      arch: %s", goruntime.GOARCH),
@@ -648,5 +656,5 @@ func releaseProviderRef(t *testing.T, home, providerDir, ref string) {
 
 func manifestEnvName(name string) string {
 	upper := strings.ToUpper(strings.ReplaceAll(name, "-", "_"))
-	return upper + "_PROVIDER_REF"
+	return upper + "_PACKAGE_REF"
 }

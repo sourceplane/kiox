@@ -44,9 +44,9 @@ func TestReleaseAndInstallLocalLayout(t *testing.T) {
 		t.Fatalf("load installed provider metadata: %v", err)
 	}
 	for _, expected := range []string{
-		filepath.Join(home, "providers", "sourceplane", "echo-provider", "v0.1.0", "metadata.json"),
-		filepath.Join(meta.StorePath, "oci", "index.json"),
-		filepath.Join(meta.StorePath, "tinx.yaml"),
+		filepath.Join(home, "packages", "sourceplane", "echo-provider", "v0.1.0", "metadata.json"),
+		filepath.Join(meta.Source.LayoutPath, "index.json"),
+		meta.StorePath,
 	} {
 		if _, err := os.Stat(expected); err != nil {
 			t.Fatalf("expected installed artifact %s: %v", expected, err)

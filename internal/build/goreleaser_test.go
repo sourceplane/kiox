@@ -26,15 +26,16 @@ func TestResolveGoReleaserConfigPrefersExplicitPath(t *testing.T) {
 func TestResolveGoReleaserConfigGeneratesFromManifest(t *testing.T) {
 	moduleRoot := t.TempDir()
 	manifestPath := filepath.Join(moduleRoot, "tinx.yaml")
-	content := `apiVersion: tinx.io/v1
-kind: Provider
+	content := `apiVersion: tinx.io/v2alpha1
+kind: Package
 metadata:
   namespace: sourceplane
   name: sparse-provider
   version: v0.2.0
 spec:
-  runtime: binary
-  entrypoint: sparse-provider
+  runtime:
+    type: binary
+    entrypoint: sparse-provider
   platforms:
     - os: darwin
       arch: amd64

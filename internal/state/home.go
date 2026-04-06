@@ -21,7 +21,15 @@ func ResolveHome(override string) (string, error) {
 }
 
 func EnsureHome(root string) error {
-	for _, dir := range []string{root, filepath.Join(root, "providers")} {
+	for _, dir := range []string{
+		root,
+		filepath.Join(root, "packages"),
+		filepath.Join(root, "store", "blobs", "sha256"),
+		filepath.Join(root, "store", "oci"),
+		filepath.Join(root, "runtimes"),
+		filepath.Join(root, "cache"),
+		filepath.Join(root, "workspaces"),
+	} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}
