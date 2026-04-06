@@ -20,7 +20,10 @@ type ProviderEnvironmentSpec struct {
 }
 
 func ResolveProviderEnvironment(spec ProviderEnvironmentSpec) (map[string]string, []string, error) {
-	providerRoot := state.VersionRoot(spec.Home, spec.Metadata.Namespace, spec.Metadata.Name, spec.Metadata.Version)
+	providerRoot := state.MetadataStoreRoot(spec.Metadata)
+	if providerRoot == "" {
+		return nil, nil, fmt.Errorf("provider store is missing for %s/%s@%s", spec.Metadata.Namespace, spec.Metadata.Name, spec.Metadata.Version)
+	}
 	providerManifestPath := filepath.Join(providerRoot, "tinx.yaml")
 	provider, err := manifest.Load(providerManifestPath)
 	if err != nil {

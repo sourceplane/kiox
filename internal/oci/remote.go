@@ -40,35 +40,35 @@ func PushLayout(ctx context.Context, layoutPath, tag, ref string, plainHTTP bool
 	return nil
 }
 
-func InstallRemote(ctx context.Context, home, ref, alias string, plainHTTP bool, out io.Writer) (state.ProviderMetadata, error) {
+func InstallRemote(ctx context.Context, activationHome, storeHome, ref, alias string, plainHTTP bool, out io.Writer) (state.ProviderMetadata, error) {
 	tracker := progress.New(out)
 	defer tracker.Finish()
 	tracker.Step("lookup", fmt.Sprintf("checking local cache for %s", ref))
-	if cached, ok := cachedRemoteInstall(home, ref, false); ok {
+	if cached, ok := cachedRemoteInstall(activationHome, ref, false); ok {
 		tracker.Cached("cache", fmt.Sprintf("using cached metadata %s/%s@%s", cached.Namespace, cached.Name, cached.Version))
-		if err := updateAlias(home, alias, cached); err != nil {
+		if err := updateAlias(activationHome, alias, cached); err != nil {
 			return state.ProviderMetadata{}, err
 		}
 		return cached, nil
 	}
-	return installRemote(ctx, home, ref, alias, plainHTTP, true, tracker)
+	return installRemote(ctx, activationHome, storeHome, ref, alias, plainHTTP, true, tracker)
 }
 
-func InstallRemoteFull(ctx context.Context, home, ref, alias string, plainHTTP bool, out io.Writer) (state.ProviderMetadata, error) {
+func InstallRemoteFull(ctx context.Context, activationHome, storeHome, ref, alias string, plainHTTP bool, out io.Writer) (state.ProviderMetadata, error) {
 	tracker := progress.New(out)
 	defer tracker.Finish()
 	tracker.Step("lookup", fmt.Sprintf("checking local cache for %s", ref))
-	if cached, ok := cachedRemoteInstall(home, ref, true); ok {
+	if cached, ok := cachedRemoteInstall(activationHome, ref, true); ok {
 		tracker.Cached("cache", fmt.Sprintf("using cached runtime %s/%s@%s", cached.Namespace, cached.Name, cached.Version))
-		if err := updateAlias(home, alias, cached); err != nil {
+		if err := updateAlias(activationHome, alias, cached); err != nil {
 			return state.ProviderMetadata{}, err
 		}
 		return cached, nil
 	}
-	return installRemote(ctx, home, ref, alias, plainHTTP, false, tracker)
+	return installRemote(ctx, activationHome, storeHome, ref, alias, plainHTTP, false, tracker)
 }
 
-func installRemote(ctx context.Context, home, ref, alias string, plainHTTP, metadataOnly bool, tracker *progress.Tracker) (state.ProviderMetadata, error) {
+func installRemote(ctx context.Context, activationHome, storeHome, ref, alias string, plainHTTP, metadataOnly bool, tracker *progress.Tracker) (state.ProviderMetadata, error) {
 	tempDir, err := os.MkdirTemp("", "tinx-oci-*")
 	if err != nil {
 		return state.ProviderMetadata{}, fmt.Errorf("create temp OCI layout: %w", err)
@@ -131,7 +131,7 @@ func installRemote(ctx context.Context, home, ref, alias string, plainHTTP, meta
 		return state.ProviderMetadata{}, fmt.Errorf("pull artifact: %w", err)
 	}
 	tracker.Done("download", "artifact pull complete")
-	meta, err := installMetadata(tempDir, tag, home, alias, ref, plainHTTP, tracker)
+	meta, err := installMetadata(tempDir, tag, activationHome, storeHome, alias, ref, plainHTTP, tracker)
 	if err != nil {
 		return state.ProviderMetadata{}, err
 	}
@@ -168,19 +168,20 @@ func parseReference(ref string) (repository, tag string) {
 }
 
 func cachedRemoteInstall(home, ref string, requireRuntimeBlobs bool) (state.ProviderMetadata, bool) {
-	namespace, name, ok := providerRefFromReference(ref)
-	if !ok {
-		return state.ProviderMetadata{}, false
-	}
-	meta, err := state.LoadProviderMetadata(home, namespace, name)
+	providers, err := state.ListInstalledProviders(home)
 	if err != nil {
 		return state.ProviderMetadata{}, false
 	}
-	if meta.Source.Ref != "" && meta.Source.Ref == ref {
-		if requireRuntimeBlobs {
-			if !layoutHasRuntimeBlobs(meta.Source.LayoutPath, meta.Source.Tag) {
-				return state.ProviderMetadata{}, false
+	requestedRepository, requestedTag := parseReference(ref)
+	for _, meta := range providers {
+		if meta.Source.Ref == "" || meta.Source.Ref != ref {
+			resolvedRepository, _ := parseReference(meta.Source.Ref)
+			if requestedRepository != resolvedRepository || strings.TrimSpace(requestedTag) == "" || strings.TrimSpace(requestedTag) != strings.TrimSpace(meta.Version) {
+				continue
 			}
+		}
+		if requireRuntimeBlobs && !layoutHasRuntimeBlobs(meta.Source.LayoutPath, meta.Source.Tag) {
+			continue
 		}
 		return meta, true
 	}
@@ -203,24 +204,6 @@ func layoutHasRuntimeBlobs(layoutPath, tag string) bool {
 		}
 	}
 	return true
-}
-
-func providerRefFromReference(ref string) (string, string, bool) {
-	repository := ref
-	if at := strings.Index(repository, "@"); at >= 0 {
-		repository = repository[:at]
-	}
-	if idx := strings.LastIndex(repository, ":"); idx > 0 {
-		after := repository[idx+1:]
-		if !strings.Contains(after, "/") {
-			repository = repository[:idx]
-		}
-	}
-	segments := strings.Split(repository, "/")
-	if len(segments) < 3 {
-		return "", "", false
-	}
-	return segments[len(segments)-2], segments[len(segments)-1], true
 }
 
 func configureRepositoryAuth(repo *remote.Repository) {
@@ -253,8 +236,35 @@ func updateAlias(home, alias string, meta state.ProviderMetadata) error {
 	if err != nil {
 		return err
 	}
-	aliases[alias] = meta.Namespace + "/" + meta.Name
+	aliases[alias] = state.MetadataKey(meta)
 	return state.SaveAliases(home, aliases)
+}
+
+func hydrateStoreFromRemote(ctx context.Context, layoutPath, ref string, plainHTTP bool) error {
+	tempDir, err := os.MkdirTemp("", "tinx-oci-hydrate-*")
+	if err != nil {
+		return fmt.Errorf("create temp OCI layout: %w", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	store, err := ocistore.New(tempDir)
+	if err != nil {
+		return fmt.Errorf("create local OCI store: %w", err)
+	}
+	repository, tag := parseReference(ref)
+	repo, err := remote.NewRepository(repository)
+	if err != nil {
+		return fmt.Errorf("create remote repository: %w", err)
+	}
+	repo.PlainHTTP = plainHTTP
+	configureRepositoryAuth(repo)
+	if _, err := oras.Copy(ctx, repo, tag, store, tag, oras.DefaultCopyOptions); err != nil {
+		return fmt.Errorf("pull artifact: %w", err)
+	}
+	if err := copyDirectory(tempDir, layoutPath); err != nil {
+		return fmt.Errorf("hydrate cached OCI layout: %w", err)
+	}
+	return nil
 }
 
 func credentialFromEnv(hostport string) (auth.Credential, bool) {

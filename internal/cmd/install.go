@@ -35,6 +35,10 @@ func newInstallCommand(root *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			storeHome, err := ensureGlobalHome(root.Home)
+			if err != nil {
+				return err
+			}
 
 			resolvedTarget := resolver.ResolveProviderSource(installTarget)
 			if source == "" {
@@ -42,7 +46,7 @@ func newInstallCommand(root *rootOptions) *cobra.Command {
 					return unsupportedProviderSourceError(resolvedTarget, "expected an OCI registry reference or --source <oci-layout>")
 				}
 				var installed state.ProviderMetadata
-				installed, err = oci.InstallRemote(cmd.Context(), home, resolvedTarget, alias, plainHTTP, cmd.ErrOrStderr())
+				installed, err = oci.InstallRemote(cmd.Context(), home, storeHome, resolvedTarget, alias, plainHTTP, cmd.ErrOrStderr())
 				if err != nil {
 					return err
 				}
@@ -60,7 +64,7 @@ func newInstallCommand(root *rootOptions) *cobra.Command {
 			if _, err := os.Stat(absSource); err != nil {
 				return fmt.Errorf("open source layout: %w", err)
 			}
-			installed, err := oci.InstallMetadata(absSource, tag, home, alias, cmd.ErrOrStderr())
+			installed, err := oci.InstallMetadata(absSource, tag, home, storeHome, alias, cmd.ErrOrStderr())
 			if err != nil {
 				return err
 			}

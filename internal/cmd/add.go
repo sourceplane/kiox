@@ -40,6 +40,9 @@ func runAddProviderCommand(cmd *cobra.Command, root *rootOptions, args []string,
 	if target == nil {
 		return fmt.Errorf("no workspace selected; run tinx workspace use <workspace>, execute inside a workspace, or pass --workspace")
 	}
+	if err := requireReadyWorkspaceTarget(target); err != nil {
+		return err
+	}
 
 	providerSource := normalizeInitSource(source)
 	providerAlias := strings.TrimSpace(alias)
@@ -54,7 +57,7 @@ func runAddProviderCommand(cmd *cobra.Command, root *rootOptions, args []string,
 	providerSpec := workspace.Provider{Source: providerSource, PlainHTTP: plainHTTP}
 	if existing, ok := providers[providerAlias]; ok {
 		if existing.Source == providerSpec.Source && existing.PlainHTTP == providerSpec.PlainHTTP {
-			writeLine(cmd.OutOrStdout(), "provider %s is already present in workspace %s", providerAlias, target.Config.Name())
+			writeLine(cmd.OutOrStdout(), "provider %s is already present in workspace %s", providerAlias, target.DisplayName())
 			return nil
 		}
 		return fmt.Errorf("workspace provider alias %q already exists", providerAlias)
@@ -68,7 +71,8 @@ func runAddProviderCommand(cmd *cobra.Command, root *rootOptions, args []string,
 		return err
 	}
 	result, err := workspace.Sync(cmd.Context(), target.Root, target.Config, workspace.SyncOptions{
-		Out: cmd.ErrOrStderr(),
+		Out:        cmd.ErrOrStderr(),
+		GlobalHome: globalHome,
 	})
 	if err != nil {
 		return err

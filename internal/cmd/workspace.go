@@ -134,8 +134,12 @@ func newWorkspaceCurrentCommand(root *rootOptions) *cobra.Command {
 				writeLine(cmd.OutOrStdout(), "workspace: none")
 				return nil
 			}
-			writeLine(cmd.OutOrStdout(), "workspace: %s", target.Config.Name())
+			writeLine(cmd.OutOrStdout(), "workspace: %s", target.DisplayName())
 			writeLine(cmd.OutOrStdout(), "root: %s", displayInventoryPath(target.Root))
+			if target.IsMissing() {
+				writeLine(cmd.OutOrStdout(), "status: missing")
+				return nil
+			}
 			writeLine(cmd.OutOrStdout(), "home: %s", displayInventoryPath(workspace.Home(target.Root)))
 			return nil
 		},
@@ -160,6 +164,11 @@ func newWorkspaceDeleteCommand(root *rootOptions) *cobra.Command {
 			if err := state.ForgetWorkspace(globalHome, target.Root); err != nil {
 				return err
 			}
+			if target.IsMissing() {
+				writeLine(cmd.OutOrStdout(), "unregistered missing workspace %s", target.DisplayName())
+				writeLine(cmd.OutOrStdout(), "root: %s", displayInventoryPath(target.Root))
+				return nil
+			}
 			for _, path := range []string{
 				workspace.Home(target.Root),
 				workspace.LockPath(target.Root),
@@ -169,7 +178,7 @@ func newWorkspaceDeleteCommand(root *rootOptions) *cobra.Command {
 					return fmt.Errorf("delete workspace path %s: %w", path, err)
 				}
 			}
-			writeLine(cmd.OutOrStdout(), "deleted workspace %s", target.Config.Name())
+			writeLine(cmd.OutOrStdout(), "deleted workspace %s", target.DisplayName())
 			writeLine(cmd.OutOrStdout(), "root: %s", displayInventoryPath(target.Root))
 			if entries, err := os.ReadDir(target.Root); err == nil && len(entries) == 0 {
 				_ = os.Remove(target.Root)
@@ -189,8 +198,12 @@ func useWorkspace(cmd *cobra.Command, root *rootOptions, reference string, comma
 	if err != nil {
 		return err
 	}
+	if err := requireReadyWorkspaceTarget(target); err != nil {
+		return err
+	}
 	result, err := workspace.Sync(cmd.Context(), target.Root, target.Config, workspace.SyncOptions{
-		Out: cmd.ErrOrStderr(),
+		Out:        cmd.ErrOrStderr(),
+		GlobalHome: globalHome,
 	})
 	if err != nil {
 		return err
@@ -202,7 +215,7 @@ func useWorkspace(cmd *cobra.Command, root *rootOptions, reference string, comma
 		return err
 	}
 	if len(command) == 0 {
-		writeLine(cmd.OutOrStdout(), "active workspace: %s", target.Config.Name())
+		writeLine(cmd.OutOrStdout(), "active workspace: %s", target.DisplayName())
 		writeLine(cmd.OutOrStdout(), "root: %s", displayInventoryPath(target.Root))
 		return nil
 	}

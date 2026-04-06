@@ -31,17 +31,26 @@ func ListInstalledProviders(home string) ([]ProviderMetadata, error) {
 			if !providerEntry.IsDir() {
 				continue
 			}
-			meta, err := LoadProviderMetadata(home, namespace, providerEntry.Name())
+			versions, err := os.ReadDir(filepath.Join(providersRoot, namespace, providerEntry.Name()))
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("read provider versions for %q/%q: %w", namespace, providerEntry.Name(), err)
 			}
-			providers = append(providers, meta)
+			for _, versionEntry := range versions {
+				if !versionEntry.IsDir() {
+					continue
+				}
+				meta, err := LoadProviderMetadata(home, namespace, providerEntry.Name(), versionEntry.Name())
+				if err != nil {
+					return nil, err
+				}
+				providers = append(providers, meta)
+			}
 		}
 	}
 
 	sort.Slice(providers, func(i, j int) bool {
-		left := providers[i].Namespace + "/" + providers[i].Name
-		right := providers[j].Namespace + "/" + providers[j].Name
+		left := ProviderKey(providers[i].Namespace, providers[i].Name, providers[i].Version)
+		right := ProviderKey(providers[j].Namespace, providers[j].Name, providers[j].Version)
 		return left < right
 	})
 	return providers, nil

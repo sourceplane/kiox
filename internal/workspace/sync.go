@@ -14,7 +14,9 @@ import (
 )
 
 type SyncOptions struct {
-	Out io.Writer
+	Out            io.Writer
+	GlobalHome     string
+	RefreshAliases []string
 }
 
 type SyncResult struct {
@@ -36,20 +38,44 @@ func Sync(ctx context.Context, root string, config Config, opts SyncOptions) (Sy
 		Aliases:   make(map[string]string, len(config.ProviderMap())),
 		Providers: make([]LockedProvider, 0, len(config.ProviderMap())),
 	}
+	storeHome := strings.TrimSpace(opts.GlobalHome)
+	if storeHome == "" {
+		storeHome = home
+	}
+	locked, err := LoadLock(root)
+	if err != nil {
+		return SyncResult{}, err
+	}
+	lockedByAlias := make(map[string]LockedProvider, len(locked.Providers))
+	for _, provider := range locked.Providers {
+		lockedByAlias[provider.Alias] = provider
+	}
+	refreshAliases := make(map[string]struct{}, len(opts.RefreshAliases))
+	for _, alias := range opts.RefreshAliases {
+		alias = strings.TrimSpace(alias)
+		if alias == "" {
+			continue
+		}
+		refreshAliases[alias] = struct{}{}
+	}
 	for _, alias := range config.ProviderAliases() {
 		provider := config.ProviderMap()[alias]
 		source := resolveWorkspaceSource(root, provider.Source)
-		installed, err := installWorkspaceProvider(ctx, home, alias, source, provider, opts)
+		installSource := resolvedWorkspaceInstallSource(source, lockedByAlias[alias], refreshAliases, alias)
+		installed, err := installWorkspaceProvider(ctx, home, storeHome, alias, installSource, provider, opts)
 		if err != nil {
 			return SyncResult{}, err
 		}
 		providerRef := installed.Namespace + "/" + installed.Name
-		result.Aliases[alias] = providerRef
+		providerKey := state.MetadataKey(installed)
+		result.Aliases[alias] = providerKey
 		result.Providers = append(result.Providers, LockedProvider{
 			Alias:    alias,
 			Provider: providerRef,
 			Source:   source,
 			Version:  installed.Version,
+			Resolved: lockedProviderResolvedSource(installed, installSource),
+			Store:    installed.StoreID,
 		})
 	}
 	if err := state.SaveAliases(home, result.Aliases); err != nil {
@@ -61,14 +87,54 @@ func Sync(ctx context.Context, root string, config Config, opts SyncOptions) (Sy
 	return result, nil
 }
 
-func installWorkspaceProvider(ctx context.Context, home, alias, source string, provider Provider, opts SyncOptions) (state.ProviderMetadata, error) {
+func installWorkspaceProvider(ctx context.Context, home, storeHome, alias, source string, provider Provider, opts SyncOptions) (state.ProviderMetadata, error) {
 	if layoutPath, ok := localLayoutPath(source); ok {
-		return oci.InstallMetadata(layoutPath, "", home, alias, opts.Out)
+		return oci.InstallMetadata(layoutPath, "", home, storeHome, alias, opts.Out)
 	}
 	if resolver.HasSourceScheme(source) {
 		return state.ProviderMetadata{}, fmt.Errorf("unsupported provider source %q: expected an OCI registry reference or local OCI layout", source)
 	}
-	return oci.InstallRemote(ctx, home, source, alias, provider.PlainHTTP, opts.Out)
+	return oci.InstallRemoteFull(ctx, home, storeHome, source, alias, provider.PlainHTTP, opts.Out)
+}
+
+func resolvedWorkspaceInstallSource(source string, locked LockedProvider, refreshAliases map[string]struct{}, alias string) string {
+	if _, ok := refreshAliases[alias]; ok {
+		return source
+	}
+	if _, ok := localLayoutPath(source); ok {
+		return source
+	}
+	if workspaceSourcePinned(source) {
+		return source
+	}
+	if strings.TrimSpace(locked.Source) == source && strings.TrimSpace(locked.Resolved) != "" {
+		return strings.TrimSpace(locked.Resolved)
+	}
+	return source
+}
+
+func workspaceSourcePinned(source string) bool {
+	trimmed := strings.TrimSpace(source)
+	if trimmed == "" {
+		return false
+	}
+	if strings.Contains(trimmed, "@") {
+		return true
+	}
+	if idx := strings.LastIndex(trimmed, ":"); idx > 0 {
+		after := trimmed[idx+1:]
+		if !strings.Contains(after, "/") {
+			return true
+		}
+	}
+	return false
+}
+
+func lockedProviderResolvedSource(meta state.ProviderMetadata, installSource string) string {
+	if resolved := strings.TrimSpace(meta.Source.Ref); resolved != "" {
+		return resolved
+	}
+	return strings.TrimSpace(installSource)
 }
 
 func resolveWorkspaceSource(root, source string) string {

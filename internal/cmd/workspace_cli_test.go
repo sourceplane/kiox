@@ -235,6 +235,100 @@ func TestProviderCommandAliasesAndStatus(t *testing.T) {
 	}
 }
 
+func TestWorkspaceProvidersReuseGlobalStoreAcrossWorkspaces(t *testing.T) {
+	tempDir := t.TempDir()
+	globalHome := filepath.Join(tempDir, ".tinx-global")
+	providerProject := createLiteCIProviderProject(t, filepath.Join(tempDir, "lite-ci-provider"))
+	layoutPath := releaseProviderLayout(t, globalHome, providerProject)
+	workspaceOne := filepath.Join(tempDir, "workspace-one")
+	workspaceTwo := filepath.Join(tempDir, "workspace-two")
+
+	runRootCommand(t, []string{"--tinx-home", globalHome, "init", workspaceOne})
+	runRootCommand(t, []string{"--tinx-home", globalHome, "add", layoutPath, "as", "lite-ci"})
+	runRootCommand(t, []string{"--tinx-home", globalHome, "init", workspaceTwo})
+	runRootCommand(t, []string{"--tinx-home", globalHome, "add", layoutPath, "as", "lite-ci"})
+
+	metaOne, err := state.LoadProviderMetadata(filepath.Join(workspaceOne, ".workspace"), "acme", "lite-ci", "v0.1.0")
+	if err != nil {
+		t.Fatalf("load workspace one provider metadata: %v", err)
+	}
+	metaTwo, err := state.LoadProviderMetadata(filepath.Join(workspaceTwo, ".workspace"), "acme", "lite-ci", "v0.1.0")
+	if err != nil {
+		t.Fatalf("load workspace two provider metadata: %v", err)
+	}
+	if metaOne.StoreID == "" || metaOne.StorePath == "" {
+		t.Fatalf("expected workspace one provider to reference the global store, got %#v", metaOne)
+	}
+	if metaOne.StoreID != metaTwo.StoreID {
+		t.Fatalf("expected shared store id, got %q and %q", metaOne.StoreID, metaTwo.StoreID)
+	}
+	if metaOne.StorePath != metaTwo.StorePath {
+		t.Fatalf("expected shared store path, got %q and %q", metaOne.StorePath, metaTwo.StorePath)
+	}
+	if _, err := os.Stat(filepath.Join(metaOne.StorePath, "oci", "index.json")); err != nil {
+		t.Fatalf("expected shared OCI store layout: %v", err)
+	}
+	storeEntries, err := os.ReadDir(filepath.Join(globalHome, "store"))
+	if err != nil {
+		t.Fatalf("read global store: %v", err)
+	}
+	if len(storeEntries) != 1 {
+		t.Fatalf("expected one shared store entry, got %d", len(storeEntries))
+	}
+}
+
+func TestWorkspaceLockPinsUnversionedRegistrySourceUntilUpdate(t *testing.T) {
+	tempDir := t.TempDir()
+	globalHome := filepath.Join(tempDir, ".tinx-global")
+	providerProject := createLiteCIProviderProject(t, filepath.Join(tempDir, "lite-ci-provider"))
+	workspaceRoot := filepath.Join(tempDir, "workspace")
+	server := httptest.NewServer(gcrregistry.New())
+	defer server.Close()
+	registryHost := strings.TrimPrefix(server.URL, "http://")
+	latestRef := registryHost + "/acme/lite-ci:latest"
+	untaggedRef := registryHost + "/acme/lite-ci"
+
+	releaseProviderRef(t, globalHome, providerProject, latestRef)
+	runRootCommand(t, []string{"--tinx-home", globalHome, "init", workspaceRoot})
+	runRootCommand(t, []string{"--tinx-home", globalHome, "add", untaggedRef, "as", "lite-ci", "--plain-http"})
+
+	lock, err := workspacepkg.LoadLock(workspaceRoot)
+	if err != nil {
+		t.Fatalf("load initial lock: %v", err)
+	}
+	if len(lock.Providers) != 1 {
+		t.Fatalf("expected one locked provider, got %#v", lock.Providers)
+	}
+	if !strings.HasPrefix(lock.Providers[0].Resolved, registryHost+"/acme/lite-ci@sha256:") {
+		t.Fatalf("expected initial resolved ref to pin an immutable digest, got %q", lock.Providers[0].Resolved)
+	}
+	initialResolved := lock.Providers[0].Resolved
+
+	setProviderVersion(t, providerProject, "v0.2.0")
+	releaseProviderRef(t, globalHome, providerProject, latestRef)
+
+	statusBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "status"})
+	if !strings.Contains(statusBuf.String(), "v0.1.0") {
+		t.Fatalf("expected locked workspace status to remain on v0.1.0, got:\n%s", statusBuf.String())
+	}
+
+	runRootCommand(t, []string{"--tinx-home", globalHome, "provider", "update", "lite-ci"})
+	updatedLock, err := workspacepkg.LoadLock(workspaceRoot)
+	if err != nil {
+		t.Fatalf("load updated lock: %v", err)
+	}
+	if !strings.HasPrefix(updatedLock.Providers[0].Resolved, registryHost+"/acme/lite-ci@sha256:") {
+		t.Fatalf("expected updated resolved ref to pin an immutable digest, got %q", updatedLock.Providers[0].Resolved)
+	}
+	if updatedLock.Providers[0].Resolved == initialResolved {
+		t.Fatalf("expected provider update to move to a new immutable digest")
+	}
+	updatedStatusBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "status"})
+	if !strings.Contains(updatedStatusBuf.String(), "v0.2.0") {
+		t.Fatalf("expected updated workspace status to report v0.2.0, got:\n%s", updatedStatusBuf.String())
+	}
+}
+
 func TestWorkspaceCreateListCurrentAndDelete(t *testing.T) {
 	tempDir := t.TempDir()
 	globalHome := filepath.Join(tempDir, ".tinx-global")
@@ -272,6 +366,81 @@ func TestWorkspaceCreateListCurrentAndDelete(t *testing.T) {
 	postDeleteCurrentBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "ws", "current"})
 	if !strings.Contains(postDeleteCurrentBuf.String(), "workspace: none") {
 		t.Fatalf("expected no active workspace after delete, got: %s", postDeleteCurrentBuf.String())
+	}
+}
+
+func TestWorkspaceUseFailsCleanlyWhenWorkspaceRootIsMissing(t *testing.T) {
+	tempDir := t.TempDir()
+	globalHome := filepath.Join(tempDir, ".tinx-global")
+	workspaceRoot := filepath.Join(tempDir, "interactive-workspace")
+
+	runRootCommand(t, []string{"--tinx-home", globalHome, "ws", "create", workspaceRoot})
+	if err := os.RemoveAll(workspaceRoot); err != nil {
+		t.Fatalf("remove workspace root: %v", err)
+	}
+
+	buf := new(bytes.Buffer)
+	err := executeCLI(context.Background(), []string{"--tinx-home", globalHome, "ws", "use", "interactive-workspace"}, buf, buf)
+	if err == nil {
+		t.Fatal("expected workspace use to fail for missing workspace root")
+	}
+	for _, expected := range []string{
+		"workspace \"interactive-workspace\" is missing",
+		"run tinx workspace delete \"interactive-workspace\" to unregister it",
+	} {
+		if !strings.Contains(err.Error(), expected) {
+			t.Fatalf("expected %q in error, got: %v", expected, err)
+		}
+	}
+	if buf.Len() != 0 {
+		t.Fatalf("did not expect command output on error, got: %s", buf.String())
+	}
+	activeWorkspace, err := state.LoadActiveWorkspace(globalHome)
+	if err != nil {
+		t.Fatalf("load active workspace: %v", err)
+	}
+	if activeWorkspace != workspaceRoot {
+		t.Fatalf("expected missing workspace to remain registered as active until deleted, got %q", activeWorkspace)
+	}
+}
+
+func TestWorkspaceDeleteUnregistersMissingWorkspaceRoot(t *testing.T) {
+	tempDir := t.TempDir()
+	globalHome := filepath.Join(tempDir, ".tinx-global")
+	workspaceRoot := filepath.Join(tempDir, "interactive-workspace")
+
+	runRootCommand(t, []string{"--tinx-home", globalHome, "ws", "create", workspaceRoot})
+	if err := os.RemoveAll(workspaceRoot); err != nil {
+		t.Fatalf("remove workspace root: %v", err)
+	}
+
+	deleteBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "ws", "delete", "interactive-workspace"})
+	for _, expected := range []string{
+		"unregistered missing workspace interactive-workspace",
+		"root: " + displayInventoryPath(workspaceRoot),
+	} {
+		if !strings.Contains(deleteBuf.String(), expected) {
+			t.Fatalf("expected %q in delete output, got:\n%s", expected, deleteBuf.String())
+		}
+	}
+
+	workspaces, err := state.LoadWorkspaces(globalHome)
+	if err != nil {
+		t.Fatalf("load workspaces: %v", err)
+	}
+	if _, ok := workspaces["interactive-workspace"]; ok {
+		t.Fatalf("expected missing workspace registration to be removed")
+	}
+	activeWorkspace, err := state.LoadActiveWorkspace(globalHome)
+	if err != nil {
+		t.Fatalf("load active workspace: %v", err)
+	}
+	if activeWorkspace != "" {
+		t.Fatalf("expected active workspace to be cleared, got %q", activeWorkspace)
+	}
+	currentBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "ws", "current"})
+	if !strings.Contains(currentBuf.String(), "workspace: none") {
+		t.Fatalf("expected no active workspace after unregistering missing root, got: %s", currentBuf.String())
 	}
 }
 
@@ -436,6 +605,22 @@ func releaseProviderLayout(t *testing.T, home, providerDir string) string {
 		t.Fatalf("unexpected release output: %s", buf.String())
 	}
 	return layoutPath
+}
+
+func setProviderVersion(t *testing.T, providerDir, version string) {
+	t.Helper()
+	manifestPath := filepath.Join(providerDir, "tinx.yaml")
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated := strings.Replace(string(data), "  version: v0.1.0", "  version: "+version, 1)
+	if updated == string(data) {
+		t.Fatalf("provider manifest %s did not contain the default version stanza", manifestPath)
+	}
+	if err := os.WriteFile(manifestPath, []byte(updated), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func releaseProviderRef(t *testing.T, home, providerDir, ref string) {
