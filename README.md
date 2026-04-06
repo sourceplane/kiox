@@ -25,7 +25,9 @@ workspace-local shell environment and invoked like normal commands.
 - `tinx use` or `tinx workspace use` selects the current workspace scope
 - `tinx provider add` mutates a workspace manifest and syncs providers into `.workspace/`
 - `tinx status` shows the current workspace, providers, shims, and generated environment artifacts
-- `tinx --` rebuilds a workspace shell environment and runs any command, or launches an interactive shell
+- `tinx shell` launches an interactive workspace shell
+- `tinx exec` rebuilds a workspace shell environment and runs any command
+- `tinx --` remains a compatibility shortcut for `tinx shell` / `tinx exec`
 - `tinx install` installs provider metadata from registry or local OCI layout
 - `tinx pack` packages a provider into an OCI image layout
 - `tinx release` builds, packages, and optionally pushes artifacts
@@ -126,6 +128,7 @@ tinx p add sourceplane/lite-ci as lite-ci
 Run any shell command through the workspace environment:
 
 ```bash
+tinx exec node build
 tinx -- node build
 tinx -- lite-ci plan
 tinx -- lite-ci plan -- node build
@@ -134,6 +137,7 @@ tinx -- lite-ci plan -- node build
 Launch an interactive shell with the workspace environment loaded:
 
 ```bash
+tinx shell
 tinx --
 ```
 
@@ -274,6 +278,12 @@ tinx init
 tinx use dev
 tinx status
 
+tinx list
+tinx remove node
+tinx update
+tinx shell
+tinx exec node build
+
 tinx ws list
 tinx ws list --short
 tinx ws list --ready
@@ -298,6 +308,7 @@ Legacy compatibility commands like `tinx add` still work, but the grouped `works
 tinx init [workspace-or-config] [-p <provider-source> [as <alias>]]...
 tinx use <workspace> [-- command...]
 tinx status
+tinx list [workspace|default]
 tinx workspace list [--short] [--ready] [--missing] [--active]
 tinx workspace create [workspace-or-config] [-p <provider-source> [as <alias>]]...
 tinx workspace use <workspace> [-- command...]
@@ -306,12 +317,16 @@ tinx workspace delete <workspace>
 tinx ws <subcommand> ...
 tinx workspaces <subcommand> ...
 tinx providers <subcommand> ...
+tinx add <provider> [as <alias>] [--plain-http]
+tinx remove <provider-or-alias>
+tinx update [provider-or-alias...]
 tinx provider list [workspace|default]
 tinx provider add <provider> [as <alias>] [--plain-http]
 tinx provider remove <provider-or-alias>
 tinx provider update [provider-or-alias...]
 tinx p <subcommand> ...
-tinx add <provider> [as <alias>] [--plain-http]
+tinx shell
+tinx exec [--] <command> [args...]
 tinx [--workspace <workspace>] -- <command...>
 tinx [--workspace <workspace>] --
 tinx install <ref> [as <alias>] [--source <oci-layout>] [--tag <tag>] [--plain-http]

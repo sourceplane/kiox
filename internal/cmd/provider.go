@@ -31,16 +31,7 @@ func newProviderListCommand(root *rootOptions) *cobra.Command {
 		Short: "List providers for the current, named, or default scope",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			reference := ""
-			if len(args) == 1 {
-				reference = args[0]
-			}
-			scope, err := resolveProviderScope(root, reference)
-			if err != nil {
-				return err
-			}
-			renderProviderScope(cmd.OutOrStdout(), scope)
-			return nil
+			return runProviderListCommand(cmd, root, args)
 		},
 	}
 	return cmd
@@ -66,43 +57,7 @@ func newProviderRemoveCommand(root *rootOptions) *cobra.Command {
 		Short: "Remove a provider from the current or selected workspace",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			globalHome, target, err := resolveRequiredWorkspaceTarget(cmd, root)
-			if err != nil {
-				return err
-			}
-			home := workspace.Home(target.Root)
-			currentAliases, err := state.LoadAliases(home)
-			if err != nil {
-				return err
-			}
-			alias, ref, err := matchWorkspaceProviderSelection(target.Config, currentAliases, args[0])
-			if err != nil {
-				return err
-			}
-			providers := cloneWorkspaceProviders(target.Config)
-			delete(providers, alias)
-			target.Config.Providers = providers
-			target.Config.Spec.Providers = nil
-			if ref != "" && !providerKeyStillReferenced(currentAliases, target.Config, alias, ref) {
-				if err := removeProviderCache(home, ref); err != nil {
-					return err
-				}
-			}
-			manifestPath := workspace.ManifestPath(target.Root)
-			if err := workspace.Save(manifestPath, target.Config); err != nil {
-				return err
-			}
-			result, err := workspace.Sync(cmd.Context(), target.Root, target.Config, workspace.SyncOptions{Out: cmd.ErrOrStderr(), GlobalHome: globalHome})
-			if err != nil {
-				return err
-			}
-			if err := rememberWorkspaceTarget(globalHome, target); err != nil {
-				return err
-			}
-			writeLine(cmd.OutOrStdout(), "removed provider %s", alias)
-			writeLine(cmd.OutOrStdout(), "manifest: %s", manifestPath)
-			writeLine(cmd.OutOrStdout(), "home: %s", result.Home)
-			return nil
+			return runRemoveProviderCommand(cmd, root, args[0])
 		},
 	}
 	return cmd
@@ -114,54 +69,98 @@ func newProviderUpdateCommand(root *rootOptions) *cobra.Command {
 		Short: "Refresh provider metadata for the current or selected workspace",
 		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			globalHome, target, err := resolveRequiredWorkspaceTarget(cmd, root)
-			if err != nil {
-				return err
-			}
-			home := workspace.Home(target.Root)
-			currentAliases, err := state.LoadAliases(home)
-			if err != nil {
-				return err
-			}
-			aliasesToRefresh := target.Config.ProviderAliases()
-			if len(args) > 0 {
-				aliasesToRefresh = aliasesToRefresh[:0]
-				seen := map[string]struct{}{}
-				for _, arg := range args {
-					alias, _, err := matchWorkspaceProviderSelection(target.Config, currentAliases, arg)
-					if err != nil {
-						return err
-					}
-					if _, ok := seen[alias]; ok {
-						continue
-					}
-					seen[alias] = struct{}{}
-					aliasesToRefresh = append(aliasesToRefresh, alias)
-				}
-			}
-			if len(aliasesToRefresh) == 0 {
-				writeLine(cmd.OutOrStdout(), "workspace %s has no providers to update", target.DisplayName())
-				return nil
-			}
-			for _, alias := range aliasesToRefresh {
-				if err := removeProviderCache(home, currentAliases[alias]); err != nil {
-					return err
-				}
-			}
-			result, err := workspace.Sync(cmd.Context(), target.Root, target.Config, workspace.SyncOptions{Out: cmd.ErrOrStderr(), GlobalHome: globalHome, RefreshAliases: aliasesToRefresh})
-			if err != nil {
-				return err
-			}
-			if err := rememberWorkspaceTarget(globalHome, target); err != nil {
-				return err
-			}
-			sort.Strings(aliasesToRefresh)
-			writeLine(cmd.OutOrStdout(), "updated providers: %s", strings.Join(aliasesToRefresh, ", "))
-			writeLine(cmd.OutOrStdout(), "home: %s", result.Home)
-			return nil
+			return runUpdateProviderCommand(cmd, root, args)
 		},
 	}
 	return cmd
+}
+
+func runRemoveProviderCommand(cmd *cobra.Command, root *rootOptions, selector string) error {
+	globalHome, target, err := resolveRequiredWorkspaceTarget(cmd, root)
+	if err != nil {
+		return err
+	}
+	home := workspace.Home(target.Root)
+	currentAliases, err := state.LoadAliases(home)
+	if err != nil {
+		return err
+	}
+	alias, ref, err := matchWorkspaceProviderSelection(target.Config, currentAliases, selector)
+	if err != nil {
+		return err
+	}
+	providers := cloneWorkspaceProviders(target.Config)
+	delete(providers, alias)
+	target.Config.Providers = providers
+	target.Config.Spec.Providers = nil
+	if ref != "" && !providerKeyStillReferenced(currentAliases, target.Config, alias, ref) {
+		if err := removeProviderCache(home, ref); err != nil {
+			return err
+		}
+	}
+	manifestPath := workspace.ManifestPath(target.Root)
+	if err := workspace.Save(manifestPath, target.Config); err != nil {
+		return err
+	}
+	result, err := workspace.Sync(cmd.Context(), target.Root, target.Config, workspace.SyncOptions{Out: cmd.ErrOrStderr(), GlobalHome: globalHome})
+	if err != nil {
+		return err
+	}
+	if err := rememberWorkspaceTarget(globalHome, target); err != nil {
+		return err
+	}
+	writeLine(cmd.OutOrStdout(), "removed provider %s", alias)
+	writeLine(cmd.OutOrStdout(), "manifest: %s", manifestPath)
+	writeLine(cmd.OutOrStdout(), "home: %s", result.Home)
+	return nil
+}
+
+func runUpdateProviderCommand(cmd *cobra.Command, root *rootOptions, selectors []string) error {
+	globalHome, target, err := resolveRequiredWorkspaceTarget(cmd, root)
+	if err != nil {
+		return err
+	}
+	home := workspace.Home(target.Root)
+	currentAliases, err := state.LoadAliases(home)
+	if err != nil {
+		return err
+	}
+	aliasesToRefresh := target.Config.ProviderAliases()
+	if len(selectors) > 0 {
+		aliasesToRefresh = aliasesToRefresh[:0]
+		seen := map[string]struct{}{}
+		for _, selector := range selectors {
+			alias, _, err := matchWorkspaceProviderSelection(target.Config, currentAliases, selector)
+			if err != nil {
+				return err
+			}
+			if _, ok := seen[alias]; ok {
+				continue
+			}
+			seen[alias] = struct{}{}
+			aliasesToRefresh = append(aliasesToRefresh, alias)
+		}
+	}
+	if len(aliasesToRefresh) == 0 {
+		writeLine(cmd.OutOrStdout(), "workspace %s has no providers to update", target.DisplayName())
+		return nil
+	}
+	for _, alias := range aliasesToRefresh {
+		if err := removeProviderCache(home, currentAliases[alias]); err != nil {
+			return err
+		}
+	}
+	result, err := workspace.Sync(cmd.Context(), target.Root, target.Config, workspace.SyncOptions{Out: cmd.ErrOrStderr(), GlobalHome: globalHome, RefreshAliases: aliasesToRefresh})
+	if err != nil {
+		return err
+	}
+	if err := rememberWorkspaceTarget(globalHome, target); err != nil {
+		return err
+	}
+	sort.Strings(aliasesToRefresh)
+	writeLine(cmd.OutOrStdout(), "updated providers: %s", strings.Join(aliasesToRefresh, ", "))
+	writeLine(cmd.OutOrStdout(), "home: %s", result.Home)
+	return nil
 }
 
 func resolveRequiredWorkspaceTarget(cmd *cobra.Command, root *rootOptions) (string, *workspaceTarget, error) {
