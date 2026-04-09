@@ -2,9 +2,65 @@
 title: Runtime shell
 ---
 
-The runtime shell is how tinx turns provider metadata into an execution environment. It syncs providers, writes shell artifacts, and then runs either an interactive shell or a single command.
+The **runtime** is the execution layer of tinx.
 
-## Commands that enter the runtime shell
+It turns workspace and provider state into a working shell environment.
+
+Think of it as where execution actually happens.
+
+## Responsibilities
+
+The runtime is responsible for:
+
+- resolving workspace context
+- syncing providers
+- materializing binaries
+- constructing the environment
+- executing commands
+
+## Runtime pipeline
+
+```text
+Workspace → Sync → Materialize → Build Env → Execute
+```
+
+### 1. Resolve workspace
+
+- determine the active workspace
+- load the manifest and lock
+
+### 2. Sync providers
+
+- ensure metadata is available
+- validate sources
+
+### 3. Materialize
+
+- extract platform-specific binaries
+- extract assets when needed
+
+### 4. Build environment
+
+- generate `PATH`
+- merge environment variables
+- create command shims
+
+### 5. Execute
+
+- resolve the command from `PATH`
+- spawn the process
+
+## Execution model
+
+Execution is simple:
+
+- commands are resolved via `PATH`
+- providers behave like normal binaries
+- environment is preconfigured
+
+No RPC. No plugins. No extra protocol layer.
+
+## Commands that enter the runtime
 
 ```bash
 tinx shell
@@ -12,23 +68,15 @@ tinx exec node build
 tinx -- node build
 ```
 
-- `tinx shell` starts an interactive shell.
-- `tinx exec` runs one command and exits.
-- `tinx -- ...` is the compatibility shortcut that routes directly into the workspace command path.
+## Environment construction
 
-## What happens before execution
+The runtime builds:
 
-1. tinx resolves the selected workspace.
-2. tinx syncs the workspace manifest and lock file.
-3. tinx loads provider metadata for each alias.
-4. tinx materializes the current platform binary if it is not already extracted.
-5. tinx writes `.workspace/bin/<alias>` shims.
-6. tinx writes `.workspace/env` and `.workspace/path`.
-7. tinx prepends `.workspace/bin` and provider paths to `PATH`.
+- `.workspace/bin` for command entrypoints
+- `.workspace/env` for environment variables
+- `.workspace/path` for additional `PATH` entries
 
-## Generated environment
-
-The workspace shell exports variables such as:
+Runtime variables include:
 
 - `TINX_HOME`
 - `TINX_WORKSPACE_ROOT`
@@ -39,27 +87,28 @@ The workspace shell exports variables such as:
 - `TINX_PROVIDER_<ALIAS>_HOME`
 - `TINX_PROVIDER_<ALIAS>_BINARY`
 
-These variables are available to providers and to any shell commands you run through tinx.
+## Design properties
 
-## Interactive shell behavior
+### Deterministic
 
-tinx uses the current `SHELL` value when it can and falls back to `/bin/sh`. For common POSIX shells, tinx adds `-i` so the shell starts in interactive mode.
+The same inputs produce the same execution behavior.
 
-```bash
-tinx shell
-```
+### Lazy
 
-## Command execution behavior
+Binaries are extracted only when needed.
 
-When you run `tinx exec` or `tinx --`, tinx resolves the command from the constructed `PATH` and executes it directly:
+### Transparent
 
-```bash
-tinx exec kubectl version --client
-tinx -- lite-ci plan -- node build
-```
+Execution behaves like normal shell commands.
 
-If the command cannot be found on `PATH`, tinx returns the underlying executable lookup error.
+### Fail-fast
 
-## Environment merge rules
+Conflicts and missing dependencies fail early.
 
-Provider environment variables are merged into one workspace environment. If two providers try to set the same key to different values, tinx fails the shell build instead of silently choosing one value.
+## What the runtime does not do
+
+- define tools
+- manage versions
+- package artifacts
+
+It executes. It does not define.

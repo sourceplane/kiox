@@ -2,9 +2,23 @@
 title: Internals
 ---
 
-This page maps the major tinx packages to the responsibilities they own. Use it when you need to understand how a workspace command becomes a provider process.
+This page maps the major tinx subsystems to the responsibilities they own. Use it when you need to understand how the workspace, provider, and runtime layers fit together.
 
-## Package map
+## System view
+
+```text
+Provider (OCI)
+      ↓
+tinx home (cache)
+      ↓
+Workspace (definition + lock)
+      ↓
+Runtime (execution)
+      ↓
+Command
+```
+
+## Subsystems
 
 | Package | Responsibility |
 | --- | --- |
@@ -16,7 +30,7 @@ This page maps the major tinx packages to the responsibilities they own. Use it 
 | `internal/runtime` | Environment assembly, PATH handling, command execution |
 | `internal/build` | Go and GoReleaser build pipelines for providers |
 
-## Runtime flow
+## Workspace pipeline
 
 When you run a workspace command such as:
 
@@ -32,7 +46,7 @@ tinx follows this path:
 4. `internal/workspace` builds `.workspace/env`, `.workspace/path`, and `.workspace/bin/<alias>`.
 5. `internal/runtime` resolves the command from the generated `PATH` and runs it.
 
-## Packaging flow
+## Packaging pipeline
 
 When you package a provider:
 
@@ -61,3 +75,9 @@ The workspace is for project-local runtime state. tinx home is for reusable prov
 - **OCI everywhere**: providers are packaged and distributed as OCI artifacts.
 - **Lazy materialization**: metadata can exist before runtime binaries are extracted.
 - **Explicit failures**: missing workspaces, missing commands, and environment conflicts fail early.
+
+## Key takeaway
+
+- workspace logic decides *what* should run
+- provider packaging decides *what* gets distributed
+- runtime decides *how* commands execute

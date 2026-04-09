@@ -2,33 +2,39 @@
 title: Caching
 ---
 
-tinx separates provider metadata, OCI storage, and extracted binaries. That split keeps sync operations small and lets runtime extraction happen only when needed.
+tinx keeps cache, source, and runtime state separate so sync stays small and execution stays lazy.
 
-## Cache layers
+## Storage layers
 
-1. **Provider metadata**: JSON metadata stored under `$TINX_HOME/providers/...`
-2. **OCI store**: copied OCI layouts stored under `$TINX_HOME/store/<storeID>/oci/`
-3. **Materialized binaries and assets**: extracted under the provider store root
+| Layer | Purpose |
+| --- | --- |
+| **Provider metadata** | JSON metadata under `$TINX_HOME/providers/...` |
+| **OCI store** | copied OCI layouts under `$TINX_HOME/store/<storeID>/oci/` |
+| **Materialized artifacts** | extracted binaries and assets under the provider store root |
 
-## Metadata-first workflow
+## tinx home vs workspace
 
-The install and sync logic can work from metadata before a platform binary is extracted. That is enough to:
+Two storage layers matter:
+
+- **tinx home** is the shared cache for providers, OCI content, and metadata
+- **workspace** is the project-specific runtime state
+
+That separation enables global caching, per-project isolation, and fast reuse across workspaces.
+
+## Lazy materialization
+
+The install and sync paths can work from metadata before a platform binary is extracted. That is enough to:
 
 - resolve provider versions
-- build the workspace lock file
+- write the workspace lock file
 - inspect capabilities
 - decide whether a workspace needs a refresh
 
-## Lazy binary extraction
+Binaries are extracted only when the workspace shell needs them.
 
-Binaries are extracted when the workspace shell needs them:
+## Cache path
 
-```bash
-tinx shell
-tinx exec node --version
-```
-
-If the current platform binary is missing, tinx materializes it from the cached OCI layout into:
+When tinx materializes a binary, it writes it under:
 
 ```text
 $TINX_HOME/store/<storeID>/bin/<os>/<arch>/<entrypoint>
@@ -36,15 +42,11 @@ $TINX_HOME/store/<storeID>/bin/<os>/<arch>/<entrypoint>
 
 ## Remote hydration
 
-If tinx has metadata and a stored remote reference but the runtime blobs are missing, tinx can hydrate the local OCI store from the registry and retry the extraction. This supports partial installs and resumed environments.
+If tinx has metadata and a stored remote reference but the runtime blobs are missing, it can hydrate the local OCI store from the registry and retry extraction. That supports partial installs and resumed environments.
 
-## Lock files and pinned sources
+## Refresh model
 
-`tinx.lock` stores the resolved version and source reference that tinx used during sync. If a provider source is already pinned with a tag or digest, tinx keeps using that source directly.
-
-## When to refresh
-
-Use refresh commands when you want to force tinx to look for updated provider metadata:
+Use refresh commands when you want tinx to look for updated provider metadata:
 
 ```bash
 tinx provider update

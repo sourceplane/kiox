@@ -2,16 +2,38 @@
 title: Workspace
 ---
 
-A workspace is the main unit of execution in tinx. It defines which providers are available, which versions are locked, and which runtime artifacts tinx should write before running commands.
+A **workspace** is the unit of execution in tinx.
 
-## Mental model
+It defines:
 
-- `tinx.yaml` declares providers by alias.
-- `tinx.lock` records resolved versions and source information.
-- `.workspace/` holds generated runtime state such as environment files, path files, and shims.
-- `tinx use`, `tinx workspace use`, or `--workspace` select which workspace tinx should run.
+- which providers are available
+- which versions are locked
+- how the runtime environment is constructed
 
-## Workspace manifest
+Think of it as a reproducible tool environment for a project.
+
+## Responsibilities
+
+A workspace is responsible for:
+
+- declaring providers
+- resolving provider sources
+- locking versions
+- building runtime artifacts
+- exposing commands through aliases
+
+## Key files
+
+```text
+<workspace>/
+  tinx.yaml      # desired state
+  tinx.lock      # resolved state
+  .workspace/    # runtime state
+```
+
+### `tinx.yaml` (desired state)
+
+Declares what you want:
 
 ```yaml
 apiVersion: tinx.io/v1
@@ -25,17 +47,65 @@ providers:
     source: sourceplane/lite-ci
 ```
 
-You can also start from a file such as `providers.tx.yaml` or `providers.tinx.yaml`. tinx normalizes those inputs to `tinx.yaml`.
+### `tinx.lock` (resolved state)
 
-## Workspace discovery and selection
+Records what was actually resolved:
 
-tinx resolves the workspace in this order:
+- exact versions
+- source references
+- content identifiers
 
-1. `--workspace <name-or-path>`
-2. A workspace discovered by walking upward from the current directory
-3. The active workspace stored in the tinx home directory
+That keeps workspace execution reproducible.
 
-Useful commands:
+### `.workspace/` (runtime state)
+
+Generated artifacts used during execution:
+
+- environment variables
+- `PATH` configuration
+- command shims
+
+This directory is ephemeral and rebuildable.
+
+## Workspace lifecycle
+
+```text
+Declare → Resolve → Lock → Build → Execute
+```
+
+1. Declare providers in `tinx.yaml`
+2. Resolve sources from local or remote OCI artifacts
+3. Lock versions in `tinx.lock`
+4. Build the runtime environment
+5. Execute commands through the workspace shell
+
+## Design properties
+
+### Declarative
+
+The workspace describes what tools are needed, not how to install them.
+
+### Reproducible
+
+The lock file keeps the same environment stable across machines.
+
+### Isolated
+
+Execution happens in a controlled environment, not the host system.
+
+### Composable
+
+Multiple providers can coexist in one workspace.
+
+## What a workspace does not do
+
+- package tools
+- define tool behavior
+- execute logic itself
+
+It orchestrates. It does not implement.
+
+## Useful commands
 
 ```bash
 tinx init
@@ -44,51 +114,3 @@ tinx use dev
 tinx workspace current
 tinx workspace list --ready
 ```
-
-## Files tinx writes
-
-```text
-<workspace>/
-  tinx.yaml
-  tinx.lock
-  .workspace/
-    env
-    path
-    bin/
-    providers/
-```
-
-- `.workspace/env` contains exported variables for the workspace shell.
-- `.workspace/path` contains newline-separated `PATH` entries.
-- `.workspace/bin/<alias>` is a shim that dispatches to the provider binary.
-
-## Adding providers
-
-Use provider aliases that match the command name you want in the shell:
-
-```bash
-tinx provider add core/node as node
-tinx provider add sourceplane/lite-ci as lite-ci
-```
-
-The workspace lock records the resolved version and source, so the same workspace can be re-synced later without guessing which provider build was used.
-
-## Running commands
-
-Run commands through the workspace shell, not with `tinx install`:
-
-```bash
-tinx -- node build
-tinx exec node test
-tinx shell
-```
-
-## Deleting workspaces
-
-Delete the runtime state and unregister the workspace when you no longer need it:
-
-```bash
-tinx workspace delete dev
-```
-
-If the workspace root has already been removed, `workspace delete` also cleans up the stale registry entry from tinx home.

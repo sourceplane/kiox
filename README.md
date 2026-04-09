@@ -2,11 +2,17 @@
 
 OCI-native provider runtime, workspace shell, and packager.
 
-`tinx` packages providers as OCI artifacts and exposes them as normal commands inside a workspace-local shell. A workspace keeps provider aliases, lock state, and generated runtime artifacts together so the same toolchain can run on developer machines and in CI.
+`tinx` is a workspace-centric runtime for tools. Providers are packaged as OCI artifacts, composed into a workspace, and executed through a reproducible shell environment.
+
+The main abstractions are:
+
+- **Workspace**: the unit of execution
+- **Provider**: the unit of distribution
+- **Runtime**: the execution layer
 
 ## Documentation
 
-- Start with the documentation landing page: [docs/intro.md](docs/intro.md)
+- Start with the concept-first landing page: [docs/intro.md](docs/intro.md)
 - Run the local docs site: `npm install && npm run docs:start`
 - Build the static docs site: `npm run docs:build`
 

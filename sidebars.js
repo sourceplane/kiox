@@ -3,11 +3,6 @@ const sidebars = {
     'intro',
     {
       type: 'category',
-      label: 'Getting Started',
-      items: ['getting-started/installation', 'getting-started/quick-start'],
-    },
-    {
-      type: 'category',
       label: 'Concepts',
       items: [
         'concepts/workspace',
@@ -16,6 +11,11 @@ const sidebars = {
         'concepts/caching',
         'concepts/execution-model',
       ],
+    },
+    {
+      type: 'category',
+      label: 'Getting Started',
+      items: ['getting-started/installation', 'getting-started/quick-start'],
     },
     {
       type: 'category',

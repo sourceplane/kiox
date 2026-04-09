@@ -4,6 +4,15 @@ title: Contributing
 
 Use this repository workflow when you change the tinx CLI, provider packaging logic, or the docs site.
 
+## Writing style
+
+When you update docs:
+
+- prefer concepts before commands
+- keep layers clear: workspace, provider, runtime
+- explain why first, how second
+- keep the mental model consistent across pages
+
 ## Prerequisites
 
 - Go 1.24+
@@ -47,6 +56,12 @@ When the CLI or runtime behavior changes:
 3. update `README.md` if the landing flow changes
 4. re-run `tinx --help` and subcommand help for CLI reference pages
 5. build the docs site before opening a PR
+
+If you are adding a new concept page, make sure it maps cleanly to one of:
+
+- workspace
+- provider
+- runtime
 
 ## Testing changes
 

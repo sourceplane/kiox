@@ -2,39 +2,56 @@
 title: Execution model
 ---
 
-The tinx execution model is simple: resolve a workspace, sync it, build a shell environment, and then run a process inside that environment.
+The execution model is the relationship between the three core abstractions:
 
-## End-to-end flow
+- **Provider** = packaged tool
+- **Workspace** = selected composition of providers
+- **Runtime** = execution layer
 
-```bash
-tinx --workspace demo -- node build
+## Mental model
+
+```text
+Provider → tinx home → Workspace → Runtime → Command
 ```
-
-This command expands into the following steps:
-
-1. Read the selected workspace from `--workspace`, the current directory, or the active workspace record.
-2. Normalize the workspace manifest and lock file.
-3. Resolve each provider alias to a provider key such as `namespace/name@version`.
-4. Ensure metadata and OCI store content are available.
-5. Build shims and shell files in `.workspace/`.
-6. Prepend workspace and provider paths.
-7. Resolve `node` from `PATH`.
-8. Execute the binary with the merged environment.
-
-## Compatibility shortcut
-
-`tinx -- ...` is a shortcut for the workspace runtime path:
 
 ```bash
 tinx -- node build
-tinx -- lite-ci plan
 ```
 
-Use it when you want a short command line and do not need to spell out `exec`.
+The command above is not special. It follows the same path every time.
 
-## Working directory rules
+## End-to-end flow
 
-If your current working directory is inside the workspace root, tinx preserves it. If you launch a workspace command from outside the workspace tree, tinx falls back to the workspace root before it runs the command.
+1. Resolve the workspace from `--workspace`, discovery, or the active workspace record.
+2. Normalize the workspace manifest and lock file.
+3. Resolve each provider alias to a provider key like `namespace/name@version`.
+4. Ensure metadata and OCI store content are available.
+5. Build shims and shell files in `.workspace/`.
+6. Prepend workspace and provider paths.
+7. Resolve the command from `PATH`.
+8. Execute the binary with the merged environment.
+
+## Typical workflow
+
+```yaml
+providers:
+  node: core/node
+  kubectl: tinx/kubectl
+```
+
+```bash
+tinx init dev
+tinx use dev
+tinx -- node build
+```
+
+## Design properties
+
+- **Workspace-first**: execution always happens in a workspace
+- **OCI-native**: provider distribution is standard and portable
+- **Lazy**: binaries are extracted only when needed
+- **Deterministic**: the same workspace behaves the same way everywhere
+- **Simple**: no RPC, no plugin framework, just binaries on `PATH`
 
 ## Failure points
 
@@ -45,4 +62,4 @@ tinx fails early when:
 - provider environment variables conflict
 - the requested command is not present on the constructed `PATH`
 
-That keeps the runtime deterministic and avoids hidden fallback behavior.
+That keeps the runtime predictable and avoids hidden fallback behavior.
