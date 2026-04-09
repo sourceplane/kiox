@@ -7,3 +7,8 @@ tinx
 
 # Example provider build output
 testdata/echo-provider/dist/
+
+# Documentation site artifacts
+node_modules/
+.docusaurus/
+docs-build/

@@ -1,0 +1,29 @@
+{
+  "name": "tinx-docs",
+  "version": "1.0.0",
+  "description": "Documentation site for tinx",
+  "scripts": {
+    "docs:start": "docusaurus start",
+    "docs:build": "docusaurus build --out-dir docs-build",
+    "docs:serve": "docusaurus serve --dir docs-build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sourceplane/tinx.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/sourceplane/tinx/issues"
+  },
+  "homepage": "https://github.com/sourceplane/tinx#readme",
+  "private": true,
+  "dependencies": {
+    "@docusaurus/core": "^3.9.2",
+    "@docusaurus/preset-classic": "^3.9.2",
+    "@mdx-js/react": "^3.1.1",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  }
+}
