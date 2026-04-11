@@ -1,0 +1,46 @@
+{
+  "namespace": "sourceplane",
+  "name": "lite-ci",
+  "version": "v0.2.25",
+  "storeID": "9d73b4d59f8d49bd50c35c1c99fbdb720a4997406313770e2813d2f6f881768c",
+  "storePath": "/Users/irinelinson/.tinx/store/9d73b4d59f8d49bd50c35c1c99fbdb720a4997406313770e2813d2f6f881768c",
+  "description": "Provider-native CI planning engine that compiles intent into deterministic execution plans",
+  "runtime": "binary",
+  "entrypoint": "entrypoint",
+  "capabilities": [
+    "debug",
+    "plan",
+    "run",
+    "validate"
+  ],
+  "capabilityDescriptions": {
+    "debug": "Trace intent processing and expansion stages",
+    "plan": "Generate an execution plan from an intent specification",
+    "run": "Execute the provider runtime using generated plans",
+    "validate": "Validate intent and component definitions"
+  },
+  "platforms": [
+    {
+      "os": "darwin",
+      "arch": "amd64"
+    },
+    {
+      "os": "darwin",
+      "arch": "arm64"
+    },
+    {
+      "os": "linux",
+      "arch": "amd64"
+    },
+    {
+      "os": "linux",
+      "arch": "arm64"
+    }
+  ],
+  "source": {
+    "layoutPath": "/Users/irinelinson/.tinx/store/9d73b4d59f8d49bd50c35c1c99fbdb720a4997406313770e2813d2f6f881768c/oci",
+    "tag": "v0.2.25",
+    "ref": "ghcr.io/sourceplane/lite-ci@sha256:fe20cc86349191413de3182b7d16d3bd39398f75103db34c8d05157ed5679064"
+  },
+  "installedAt": "2026-04-07T12:36:39.71078Z"
+}

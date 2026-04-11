@@ -1,0 +1,139 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: liteci Plan
+description: Execution plan DAG output specification
+type: object
+required:
+  - apiVersion
+  - kind
+  - metadata
+  - execution
+  - jobs
+properties:
+  apiVersion:
+    type: string
+    enum:
+      - liteci.io/v1
+  kind:
+    type: string
+    enum:
+      - Plan
+  metadata:
+    type: object
+    required:
+      - name
+      - generatedAt
+      - checksum
+    properties:
+      name:
+        type: string
+      description:
+        type: string
+      namespace:
+        type: string
+      generatedAt:
+        type: string
+        format: date-time
+      checksum:
+        type: string
+        pattern: ^sha256-[a-f0-9]{64}$
+  execution:
+    type: object
+    required:
+      - concurrency
+      - failFast
+      - stateFile
+    properties:
+      concurrency:
+        type: integer
+        minimum: 1
+      failFast:
+        type: boolean
+      stateFile:
+        type: string
+  spec:
+    type: object
+    properties:
+      jobBindings:
+        type: object
+        additionalProperties:
+          type: string
+  jobs:
+    type: array
+    items:
+      type: object
+      required:
+        - id
+        - name
+        - component
+        - environment
+        - steps
+      properties:
+        id:
+          type: string
+          pattern: ^[a-z0-9-]+@[a-z0-9-]+\.[a-z0-9-]+$
+        name:
+          type: string
+        component:
+          type: string
+        environment:
+          type: string
+        composition:
+          type: string
+        jobRegistry:
+          type: string
+        job:
+          type: string
+        runsOn:
+          type: string
+        path:
+          type: string
+        steps:
+          type: array
+          items:
+            type: object
+            required:
+              - id
+              - run
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+              phase:
+                type: string
+                enum:
+                  - pre
+                  - main
+                  - post
+              order:
+                type: integer
+                minimum: 0
+              run:
+                type: string
+              timeout:
+                type: string
+              retry:
+                type: integer
+              onFailure:
+                type: string
+                enum:
+                  - stop
+                  - continue
+        dependsOn:
+          type: array
+          items:
+            type: string
+        timeout:
+          type: string
+        retries:
+          type: integer
+        env:
+          type: object
+          additionalProperties: true
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+        config:
+          type: object
+          additionalProperties: true
