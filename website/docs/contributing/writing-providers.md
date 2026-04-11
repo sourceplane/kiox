@@ -35,9 +35,9 @@ If you change:
 
 then update the relevant pages in:
 
-- `docs/providers/`
-- `docs/reference/`
-- `docs/examples/`
+- `website/docs/providers/`
+- `website/docs/reference/`
+- `website/docs/examples/`
 
 ## Validate the fixture flow
 

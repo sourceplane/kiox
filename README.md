@@ -12,15 +12,16 @@ The main abstractions are:
 
 ## Documentation
 
-- Start with the concept-first landing page: [docs/intro.md](docs/intro.md)
-- Run the local docs site: `npm install && npm run docs:start`
-- Build the static docs site: `npm run docs:build`
+- Start with the concept-first landing page: [website/docs/intro.md](website/docs/intro.md)
+- Run the local docs site: `cd website && npm install && npm run docs:start`
+- Build the static docs site: `cd website && npm run docs:build`
 
 ## Manual Cloudflare Pages deploy
 
-The docs site builds into `docs-build/`. To publish it manually to Cloudflare Pages:
+The docs site builds into `website/docs-build/`. To publish it manually to Cloudflare Pages:
 
 ```bash
+cd website
 npm ci
 npm run docs:build
 wrangler login
@@ -95,5 +96,5 @@ tinx release --manifest tinx.yaml --main ./cmd/my-provider --push ghcr.io/acme/m
 
 ```bash
 make test
-npm run docs:build
+cd website && npm run docs:build
 ```
