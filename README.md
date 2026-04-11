@@ -25,7 +25,7 @@ cd website
 npm ci
 npm run docs:build
 wrangler login
-wrangler pages deploy docs-build --project-name tinx
+wrangler pages deploy docs-build --project-name tinx-docs
 ```
 
 Replace `tinx` with your Cloudflare Pages project name if it is different.
