@@ -16,6 +16,19 @@ The main abstractions are:
 - Run the local docs site: `npm install && npm run docs:start`
 - Build the static docs site: `npm run docs:build`
 
+## Manual Cloudflare Pages deploy
+
+The docs site builds into `docs-build/`. To publish it manually to Cloudflare Pages:
+
+```bash
+npm ci
+npm run docs:build
+wrangler login
+wrangler pages deploy docs-build --project-name tinx
+```
+
+Replace `tinx` with your Cloudflare Pages project name if it is different.
+
 ## Install
 
 Install from source:
