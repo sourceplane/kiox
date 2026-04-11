@@ -31,6 +31,7 @@ make run-example
 For the docs site:
 
 ```bash
+cd website
 npm install
 npm run docs:start
 npm run docs:build
@@ -44,15 +45,15 @@ npm run docs:build
 - `internal/oci`: OCI packaging and installation
 - `internal/runtime`: shell and command execution
 - `internal/state`: tinx home state
-- `docs/`: Docusaurus source docs
+- `website/docs/`: Docusaurus source docs
 - `testdata/echo-provider`: example provider fixture
 
 ## Updating documentation
 
 When the CLI or runtime behavior changes:
 
-1. update the affected doc pages under `docs/`
-2. update `sidebars.js` if navigation changes
+1. update the affected doc pages under `website/docs/`
+2. update `website/sidebars.js` if navigation changes
 3. update `README.md` if the landing flow changes
 4. re-run `tinx --help` and subcommand help for CLI reference pages
 5. build the docs site before opening a PR

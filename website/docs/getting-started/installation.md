@@ -40,9 +40,10 @@ make build
 
 ## Build the docs site locally
 
-The documentation site lives at the repository root and uses Docusaurus:
+The documentation site lives in `website/` and uses Docusaurus:
 
 ```bash
+cd website
 npm install
 npm run docs:start
 ```
