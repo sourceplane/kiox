@@ -5,7 +5,7 @@ const require = createRequire(import.meta.url);
 const config = {
   title: 'tinx',
   tagline: 'OCI-native provider runtime, workspace shell, and packager',
-  url: 'https://sourceplane.github.io',
+  url: 'https://your-cloudflare-project.pages.dev',
   baseUrl: '/',
   organizationName: 'sourceplane',
   projectName: 'tinx',
