@@ -1,5 +1,0 @@
-aliases:
-    lite-ci: sourceplane/lite-ci@v0.2.25
-activeWorkspace: /Users/irinelinson/sourceplane/tinx/my-workspace/new-space
-workspaces:
-    new-space: /Users/irinelinson/sourceplane/tinx/my-workspace/new-space

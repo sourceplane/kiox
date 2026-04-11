@@ -1,3 +1,0 @@
-apiVersion: tinx.io/v1
-kind: WorkspaceLock
-workspace: newr-space
