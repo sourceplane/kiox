@@ -7,7 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/sourceplane/tinx/internal/manifest"
+	"github.com/sourceplane/tinx/internal/core"
+	"github.com/sourceplane/tinx/internal/oci"
 	"github.com/sourceplane/tinx/internal/state"
 )
 
@@ -15,6 +16,7 @@ type ProviderEnvironmentSpec struct {
 	Home          string
 	WorkspaceRoot string
 	Alias         string
+	ToolName      string
 	BinaryPath    string
 	Metadata      state.ProviderMetadata
 }
@@ -24,27 +26,49 @@ func ResolveProviderEnvironment(spec ProviderEnvironmentSpec) (map[string]string
 	if providerRoot == "" {
 		return nil, nil, fmt.Errorf("provider store is missing for %s/%s@%s", spec.Metadata.Namespace, spec.Metadata.Name, spec.Metadata.Version)
 	}
-	providerManifestPath := filepath.Join(providerRoot, "tinx.yaml")
-	provider, err := manifest.Load(providerManifestPath)
+	pkg, err := oci.LoadPackageModel(spec.Metadata)
 	if err != nil {
-		return nil, nil, fmt.Errorf("load provider manifest: %w", err)
+		return nil, nil, fmt.Errorf("load provider package: %w", err)
+	}
+	tool, ok := resolveEnvironmentTool(pkg, spec.ToolName)
+	if !ok {
+		return nil, nil, fmt.Errorf("resolve provider environment tool %q", spec.ToolName)
 	}
 
-	templateVars := providerTemplateVars(spec, providerRoot, provider.AssetsRoot())
+	templateVars := providerTemplateVars(spec, providerRoot, providerAssetsRoot(pkg, providerRoot))
 	env := map[string]string{}
-	if len(provider.Spec.Env) > 0 {
-		keys := make([]string, 0, len(provider.Spec.Env))
-		for key := range provider.Spec.Env {
-			keys = append(keys, key)
-		}
-		sort.Strings(keys)
+	for _, envName := range resolveEnvironmentNames(pkg, tool) {
+		providerEnv := pkg.Environments[envName]
+		keys := exportKeys(providerEnv.Spec)
 		for _, key := range keys {
-			env[key] = expandProviderTemplate(provider.Spec.Env[key], templateVars)
+			if value, ok := providerEnv.Spec.Variables[key]; ok {
+				env[key] = expandProviderTemplate(value, templateVars)
+			}
 		}
 	}
+	toolKeys := make([]string, 0, len(tool.Spec.Env))
+	for key := range tool.Spec.Env {
+		toolKeys = append(toolKeys, key)
+	}
+	sort.Strings(toolKeys)
+	for _, key := range toolKeys {
+		env[key] = expandProviderTemplate(tool.Spec.Env[key], templateVars)
+	}
 
-	pathEntries := make([]string, 0, len(provider.Spec.Path))
-	for _, entry := range provider.Spec.Path {
+	pathEntries := make([]string, 0)
+	for _, envName := range resolveEnvironmentNames(pkg, tool) {
+		for _, entry := range pkg.Environments[envName].Spec.Path {
+			expanded := strings.TrimSpace(expandProviderTemplate(entry, templateVars))
+			if expanded == "" {
+				continue
+			}
+			if !filepath.IsAbs(expanded) {
+				expanded = filepath.Join(providerRoot, filepath.FromSlash(expanded))
+			}
+			pathEntries = appendUniquePaths(pathEntries, filepath.Clean(expanded))
+		}
+	}
+	for _, entry := range tool.Spec.Path {
 		expanded := strings.TrimSpace(expandProviderTemplate(entry, templateVars))
 		if expanded == "" {
 			continue
@@ -55,6 +79,87 @@ func ResolveProviderEnvironment(spec ProviderEnvironmentSpec) (map[string]string
 		pathEntries = appendUniquePaths(pathEntries, filepath.Clean(expanded))
 	}
 	return env, pathEntries, nil
+}
+
+func resolveEnvironmentTool(pkg core.Package, toolName string) (core.Tool, bool) {
+	if strings.TrimSpace(toolName) != "" {
+		if tool, ok := pkg.Tool(toolName); ok {
+			return tool, true
+		}
+	}
+	return pkg.DefaultTool()
+}
+
+func resolveEnvironmentNames(pkg core.Package, tool core.Tool) []string {
+	seen := map[string]struct{}{}
+	result := make([]string, 0, len(pkg.Environments)+len(tool.Spec.Environments))
+	for _, content := range pkg.Provider.Spec.Contents {
+		if content.Kind != core.KindEnvironment {
+			continue
+		}
+		if _, ok := pkg.Environments[content.Name]; !ok {
+			continue
+		}
+		if _, ok := seen[content.Name]; ok {
+			continue
+		}
+		seen[content.Name] = struct{}{}
+		result = append(result, content.Name)
+	}
+	if len(result) == 0 {
+		for _, env := range pkg.SortedEnvironments() {
+			if _, ok := seen[env.Metadata.Name]; ok {
+				continue
+			}
+			seen[env.Metadata.Name] = struct{}{}
+			result = append(result, env.Metadata.Name)
+		}
+	}
+	for _, envName := range tool.Spec.Environments {
+		if _, ok := pkg.Environments[envName]; !ok {
+			continue
+		}
+		if _, ok := seen[envName]; ok {
+			continue
+		}
+		seen[envName] = struct{}{}
+		result = append(result, envName)
+	}
+	return result
+}
+
+func exportKeys(spec core.EnvironmentSpec) []string {
+	if len(spec.Export) > 0 {
+		return append([]string(nil), spec.Export...)
+	}
+	keys := make([]string, 0, len(spec.Variables))
+	for key := range spec.Variables {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func providerAssetsRoot(pkg core.Package, providerRoot string) string {
+	if len(pkg.Assets) == 0 {
+		return providerRoot
+	}
+	paths := make([]string, 0, len(pkg.Assets))
+	for _, asset := range pkg.Assets {
+		path := strings.TrimSpace(asset.Spec.Mount.Path)
+		if path == "" {
+			continue
+		}
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(providerRoot, filepath.FromSlash(path))
+		}
+		paths = append(paths, filepath.Clean(path))
+	}
+	if len(paths) == 0 {
+		return providerRoot
+	}
+	sort.Strings(paths)
+	return paths[0]
 }
 
 func providerTemplateVars(spec ProviderEnvironmentSpec, providerRoot, assetsRoot string) map[string]string {
@@ -69,7 +174,11 @@ func providerTemplateVars(spec ProviderEnvironmentSpec, providerRoot, assetsRoot
 	}
 	providerAssets := providerRoot
 	if strings.TrimSpace(assetsRoot) != "" {
-		providerAssets = filepath.Join(providerRoot, filepath.FromSlash(assetsRoot))
+		if filepath.IsAbs(assetsRoot) {
+			providerAssets = filepath.Clean(assetsRoot)
+		} else {
+			providerAssets = filepath.Join(providerRoot, filepath.FromSlash(assetsRoot))
+		}
 	}
 	return map[string]string{
 		"cwd":                workingDir,

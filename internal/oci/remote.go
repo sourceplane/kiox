@@ -176,7 +176,11 @@ func cachedRemoteInstall(home, ref string, requireRuntimeBlobs bool) (state.Prov
 	for _, meta := range providers {
 		if meta.Source.Ref == "" || meta.Source.Ref != ref {
 			resolvedRepository, _ := parseReference(meta.Source.Ref)
-			if requestedRepository != resolvedRepository || strings.TrimSpace(requestedTag) == "" || strings.TrimSpace(requestedTag) != strings.TrimSpace(meta.Version) {
+			cachedTag := strings.TrimSpace(meta.Source.Tag)
+			if cachedTag == "" {
+				cachedTag = strings.TrimSpace(meta.Version)
+			}
+			if requestedRepository != resolvedRepository || strings.TrimSpace(requestedTag) == "" || strings.TrimSpace(requestedTag) != cachedTag {
 				continue
 			}
 		}
@@ -189,17 +193,12 @@ func cachedRemoteInstall(home, ref string, requireRuntimeBlobs bool) (state.Prov
 }
 
 func layoutHasRuntimeBlobs(layoutPath, tag string) bool {
-	_, view, _, _, _, _, err := readLayout(layoutPath, tag)
+	_, view, _, _, _, err := readLayout(layoutPath, tag)
 	if err != nil {
 		return false
 	}
-	if view.AssetsDescriptor != nil {
-		if _, err := readBlob(layoutPath, *view.AssetsDescriptor); err != nil {
-			return false
-		}
-	}
-	for _, descriptor := range view.BinaryDescriptors {
-		if _, err := readBlob(layoutPath, descriptor); err != nil {
+	for _, layer := range view.BundleLayers {
+		if _, err := readBlob(layoutPath, layer.Descriptor); err != nil {
 			return false
 		}
 	}

@@ -2,7 +2,7 @@
 title: tinx provider
 ---
 
-`tinx provider` manages providers declared in a workspace. The shorter `tinx add`, `tinx remove`, `tinx update`, and `tinx list` commands map to the same workflows.
+`tinx provider` manages providers declared in a workspace. The shorter `tinx add`, `tinx remove`, and `tinx update` commands map to the same workflows.
 
 ## Main command help
 
@@ -33,7 +33,7 @@ Use "tinx provider [command] --help" for more information about a command.
 
 ## `provider add`
 
-Add a provider source to the workspace manifest and sync it immediately.
+Add a provider source to the workspace manifest and sync it immediately. That sync rewrites the lock file and refreshes the workspace shell artifacts.
 
 ```text
 Add a provider to the current or selected workspace
@@ -62,6 +62,8 @@ tinx provider add ./oci as echo
 
 List providers for the current workspace, a named workspace, or the default scope.
 
+This is provider-only inventory. If you want tool inventory too, use `tinx ls` or `tinx status`.
+
 ```text
 List providers for the current, named, or default scope
 
@@ -82,7 +84,7 @@ Examples:
 tinx provider list
 tinx provider list demo
 tinx provider list default
-tinx list providers
+tinx ls demo
 ```
 
 ## `provider remove`
@@ -138,10 +140,10 @@ tinx update node
 
 ## Related inventory commands
 
-The top-level `list` command exposes both provider and workspace inventory:
+The top-level `list` command exposes both provider and tool inventory for workspace scopes:
 
 ```text
-List providers or inspect workspace inventory
+List providers and tools or inspect workspace inventory
 
 Usage:
   tinx list [workspace|default] [flags]

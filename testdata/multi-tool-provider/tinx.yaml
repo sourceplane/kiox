@@ -1,0 +1,85 @@
+apiVersion: tinx.io/v1
+kind: Provider
+metadata:
+  namespace: acme
+  name: multi-tool-provider
+  version: v0.1.0
+  description: Multi-tool provider exercising normalized resources and lazy script installs
+spec:
+  contents:
+    - Tool: setup-echo
+    - Tool: echo-tool
+    - Bundle: setup-echo
+    - Environment: default-env
+---
+apiVersion: tinx.io/v1
+kind: Bundle
+metadata:
+  name: setup-echo
+spec:
+  layers:
+    - platform:
+        os: darwin
+        arch: amd64
+      mediaType: application/vnd.tinx.tool.binary
+      source: bin/darwin/amd64/setup-echo
+    - platform:
+        os: darwin
+        arch: arm64
+      mediaType: application/vnd.tinx.tool.binary
+      source: bin/darwin/arm64/setup-echo
+    - platform:
+        os: linux
+        arch: amd64
+      mediaType: application/vnd.tinx.tool.binary
+      source: bin/linux/amd64/setup-echo
+    - platform:
+        os: linux
+        arch: arm64
+      mediaType: application/vnd.tinx.tool.binary
+      source: bin/linux/arm64/setup-echo
+---
+apiVersion: tinx.io/v1
+kind: Tool
+metadata:
+  name: setup-echo
+spec:
+  runtime:
+    type: oci
+  source:
+    type: bundle
+    ref: setup-echo
+  install:
+    strategy: lazy
+  provides:
+    - setup-echo
+---
+apiVersion: tinx.io/v1
+kind: Tool
+metadata:
+  name: echo-tool
+spec:
+  default: true
+  runtime:
+    type: script
+  source:
+    type: script
+    script: setup-echo "$TINX_TOOL_BIN"
+  install:
+    strategy: lazy
+  provides:
+    - echo-tool
+  dependsOn:
+    - tool: setup-echo
+  environments:
+    - default-env
+---
+apiVersion: tinx.io/v1
+kind: Environment
+metadata:
+  name: default-env
+spec:
+  variables:
+    ECHO_GREETING: hello-normalized
+  export:
+    - ECHO_GREETING

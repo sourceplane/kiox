@@ -13,7 +13,7 @@ Replace direct provider execution with workspace execution:
 tinx run node build
 
 # new
-tinx provider add core/node as node
+tinx add core/node as node
 tinx -- node build
 ```
 
@@ -22,18 +22,19 @@ tinx -- node build
 tinx run lite-ci plan
 
 # new
-tinx -- lite-ci plan
+tinx exec lite-ci plan
 ```
 
 ## Why the command was removed
 
-tinx now treats provider execution as a workspace concern:
+tinx now treats execution as a workspace concern:
 
 - the workspace owns provider aliases
-- the workspace lock records resolved versions
+- the workspace lock records resolved versions and digests
 - the runtime shell builds one merged environment for all providers
+- shims resolve tool plans and lazy installs before execution
 
-That lets providers call each other naturally through `PATH`.
+That lets provider commands call each other naturally through `PATH` and keeps setup-style tools in the same model as bundled tools.
 
 ## Help output
 

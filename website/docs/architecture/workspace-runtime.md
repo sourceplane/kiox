@@ -2,7 +2,7 @@
 title: Workspace runtime
 ---
 
-The workspace runtime is the layer that turns a manifest into a shell environment.
+The workspace runtime is the project-local layer tinx builds under `.workspace/`.
 
 ## Workspace resolution
 
@@ -34,6 +34,7 @@ After sync, tinx builds workspace runtime artifacts:
   path
   bin/
     <alias>
+    <provided-command>
 ```
 
 Key behaviors:
@@ -41,17 +42,22 @@ Key behaviors:
 - `.workspace/bin` is recreated on each build
 - aliases are sorted before shell artifacts are written
 - provider environment variables must agree when they share a key
-- workspace shims call the real provider binary with `exec`
+- shims are written for both workspace aliases and tool `provides` entries
+- workspace shims call the hidden `tinx __shim` command, not the real tool binary directly
+
+That last point is what makes lazy installation work. The workspace shell does not need to know whether a command is already installed.
 
 ## PATH layout
 
 The generated `PATH` is assembled in this order:
 
 1. `.workspace/bin`
-2. provider `spec.path` entries
+2. environment path entries from the selected providers
 3. the original host `PATH`
 
 That ensures a provider alias wins over host binaries with the same name.
+
+When a shim resolves a command, tinx can still add tool-specific binary directories for that single process.
 
 ## Working directory behavior
 
@@ -63,3 +69,15 @@ If you launch tinx from inside the workspace tree, tinx preserves your current d
 - `.workspace/path` is newline-separated for inspection and tooling
 
 These files are generated output. Treat them as runtime state, not source of truth.
+
+## Environment merging
+
+The workspace environment contains:
+
+- workspace-scoped variables such as `TINX_WORKSPACE_ROOT`
+- provider-derived variables for each alias
+- merged static path entries
+
+If two providers export the same variable with different values, tinx fails rather than picking one silently.
+
+Tool-scoped environment resources are merged when the shim resolves the selected tool plan.

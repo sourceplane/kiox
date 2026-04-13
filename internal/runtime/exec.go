@@ -27,15 +27,7 @@ func Execute(opts ExecOptions) error {
 	if opts.WorkingDir != "" {
 		cmd.Dir = opts.WorkingDir
 	}
-	env := envMapFromList(os.Environ())
-	env["TINX_PROVIDER_HOME"] = opts.ProviderHome
-	env["TINX_VERSION"] = opts.TinxVersion
-	env["TINX_CONTEXT"] = "{}"
-	for key, value := range opts.EnvOverrides {
-		env[key] = value
-	}
-	applyPathEntries(env, opts.PathEntries)
-	cmd.Env = envListFromMap(env)
+	cmd.Env = CommandEnvironment(os.Environ(), withProviderEnvironment(opts), opts.PathEntries)
 	cmd.Stdout = opts.Stdout
 	cmd.Stderr = opts.Stderr
 	cmd.Stdin = opts.Stdin
@@ -43,6 +35,27 @@ func Execute(opts ExecOptions) error {
 		return fmt.Errorf("execute provider: %w", err)
 	}
 	return nil
+}
+
+func CommandEnvironment(base []string, overrides map[string]string, pathEntries []string) []string {
+	env := envMapFromList(base)
+	for key, value := range overrides {
+		env[key] = value
+	}
+	applyPathEntries(env, pathEntries)
+	return envListFromMap(env)
+}
+
+func withProviderEnvironment(opts ExecOptions) map[string]string {
+	env := make(map[string]string, len(opts.EnvOverrides)+3)
+	for key, value := range opts.EnvOverrides {
+		env[key] = value
+	}
+	env["TINX_PROVIDER_HOME"] = opts.ProviderHome
+	env["TINX_VERSION"] = opts.TinxVersion
+	env["TINX_CONTEXT"] = "{}"
+	env["TINX_INTERNAL_CLI"] = ""
+	return env
 }
 
 func applyPathEntries(env map[string]string, pathEntries []string) {

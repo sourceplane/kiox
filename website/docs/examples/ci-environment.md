@@ -13,6 +13,8 @@ export TINX_HOME="$PWD/.tinx-home"
 tinx --tinx-home "$TINX_HOME" install ghcr.io/acme/node-provider:v20.19.0
 ```
 
+`install` only pre-populates provider metadata and OCI store content. The first workspace command may still lazily materialize tools.
+
 ## Materialize from a workspace manifest
 
 ```bash
@@ -34,7 +36,13 @@ Cache these paths between CI jobs:
 - `.tinx-home/providers/`
 - `.tinx-home/store/`
 
-That preserves both metadata and OCI store content so later jobs avoid re-downloading providers.
+That preserves metadata, OCI store content, extracted assets, and previously installed lazy tools so later jobs avoid re-downloading or reinstalling providers.
+
+If you need visibility into what the cache contains, emit inventory in CI logs:
+
+```bash
+tinx --tinx-home "$TINX_HOME" ls default
+```
 
 ## Authenticate to registries
 

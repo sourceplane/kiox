@@ -1,7 +1,10 @@
 package cmd
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"testing"
 
@@ -163,6 +166,92 @@ func TestListProvidersSupportsWorkspaceAndDefaultScopes(t *testing.T) {
 	if strings.Contains(defaultOutput, "acme/lite-ci") {
 		t.Fatalf("default provider output should not include workspace-local installs:\n%s", defaultOutput)
 	}
+}
+
+func TestListShowsToolInventoryForSetupProviderFlow(t *testing.T) {
+	tempDir := t.TempDir()
+	globalHome := filepath.Join(tempDir, ".tinx-global")
+	providerDir := filepath.Join(tempDir, "setup-kubectl-provider")
+	if err := copyTree(filepath.Join("..", "..", "testdata", "setup-kubectl"), providerDir); err != nil {
+		t.Fatalf("copy setup-kubectl provider: %v", err)
+	}
+	layoutPath := releaseProviderLayout(t, globalHome, providerDir)
+	workspaceRoot := filepath.Join(tempDir, "kubectl-workspace")
+
+	runRootCommand(t, []string{"--tinx-home", globalHome, "init", workspaceRoot})
+	runRootCommand(t, []string{"--tinx-home", globalHome, "add", layoutPath, "as", "setup-kubectl"})
+	server, version := newFakeKubectlReleaseServer(t)
+	defer server.Close()
+	t.Setenv("KUBECTL_RELEASE_BASE_URL", server.URL)
+	t.Setenv("KUBECTL_VERSION", "1.27")
+
+	beforeBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "ls", "kubectl-workspace"})
+	beforeOutput := beforeBuf.String()
+	for _, expected := range []string{
+		"Scope: kubectl-workspace",
+		"Tools:",
+		"TOOL",
+		"COMMANDS",
+		"setup-kubectl",
+		"kubectl",
+		"2 tools (2 lazy)",
+	} {
+		if !strings.Contains(beforeOutput, expected) {
+			t.Fatalf("expected %q in pre-install list output, got:\n%s", expected, beforeOutput)
+		}
+	}
+
+	execBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "--workspace", workspaceRoot, "--", "kubectl", "version", "--client"})
+	execOutput := execBuf.String()
+	for _, expected := range []string{
+		"kubectl-version=" + version,
+		"kubectl-args=version --client",
+	} {
+		if !strings.Contains(execOutput, expected) {
+			t.Fatalf("expected %q in kubectl output, got:\n%s", expected, execOutput)
+		}
+	}
+
+	afterBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "ls", "kubectl-workspace"})
+	afterOutput := afterBuf.String()
+	for _, expected := range []string{
+		"setup-kubectl",
+		"kubectl",
+		"2 tools (2 ready)",
+	} {
+		if !strings.Contains(afterOutput, expected) {
+			t.Fatalf("expected %q in post-install list output, got:\n%s", expected, afterOutput)
+		}
+	}
+	if strings.Contains(afterOutput, "2 tools (2 lazy)") {
+		t.Fatalf("expected lazy tool statuses to clear after install, got:\n%s", afterOutput)
+	}
+}
+
+func newFakeKubectlReleaseServer(t *testing.T) (*httptest.Server, string) {
+	t.Helper()
+	version := "v1.27.15"
+	arch := goruntime.GOARCH
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/stable.txt":
+			_, _ = w.Write([]byte(version))
+		case "/stable-1.27.txt":
+			_, _ = w.Write([]byte(version))
+		case "/" + version + "/bin/" + goruntime.GOOS + "/" + arch + "/kubectl":
+			w.Header().Set("Content-Type", "application/octet-stream")
+			_, _ = w.Write([]byte(strings.Join([]string{
+				"#!/bin/sh",
+				"set -eu",
+				"printf 'kubectl-version=%s\\n' '" + version + "'",
+				"printf 'kubectl-args=%s\\n' \"$*\"",
+				"",
+			}, "\n")))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	return server, version
 }
 
 func releaseStandaloneProviderLayout(t *testing.T, home, providerDir string) string {

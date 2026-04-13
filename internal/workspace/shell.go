@@ -11,11 +11,13 @@ import (
 
 	"github.com/sourceplane/tinx/internal/oci"
 	tinxruntime "github.com/sourceplane/tinx/internal/runtime"
+	"github.com/sourceplane/tinx/internal/runtimes"
 	"github.com/sourceplane/tinx/internal/state"
 )
 
 type ShellBuildOptions struct {
-	Out io.Writer
+	Out        io.Writer
+	GlobalHome string
 }
 
 type ShellEnvironment struct {
@@ -24,6 +26,11 @@ type ShellEnvironment struct {
 	EnvFile     string
 	PathFile    string
 	ShimDir     string
+}
+
+type shimTarget struct {
+	Alias string
+	Tool  string
 }
 
 func BuildShellEnvironment(root, home string, aliases map[string]string, opts ShellBuildOptions) (ShellEnvironment, error) {
@@ -43,6 +50,7 @@ func BuildShellEnvironment(root, home string, aliases map[string]string, opts Sh
 	pathFile := PathPath(root)
 	env := map[string]string{
 		"TINX_HOME":                home,
+		"TINX_GLOBAL_HOME":         firstNonEmpty(opts.GlobalHome, home),
 		"TINX_WORKSPACE_ROOT":      root,
 		"TINX_WORKSPACE_HOME":      home,
 		"TINX_WORKSPACE_ENV_FILE":  envFile,
@@ -50,6 +58,15 @@ func BuildShellEnvironment(root, home string, aliases map[string]string, opts Sh
 		"TINX_WORKSPACE_PROVIDERS": filepath.Join(home, "providers"),
 	}
 	pathEntries := []string{shimDir}
+	shimTargets := map[string]shimTarget{}
+	registry, err := runtimes.NewBuiltinRegistry()
+	if err != nil {
+		return ShellEnvironment{}, err
+	}
+	tinxBinary, err := os.Executable()
+	if err != nil {
+		return ShellEnvironment{}, fmt.Errorf("resolve tinx binary: %w", err)
+	}
 
 	aliasNames := make([]string, 0, len(aliases))
 	for alias := range aliases {
@@ -66,18 +83,39 @@ func BuildShellEnvironment(root, home string, aliases map[string]string, opts Sh
 		if err != nil {
 			return ShellEnvironment{}, err
 		}
-		binaryPath := oci.CurrentBinaryPath(meta)
-		if info, err := os.Stat(binaryPath); err != nil || info.IsDir() {
-			binaryPath, err = oci.MaterializeRuntime(meta, goruntime.GOOS, goruntime.GOARCH, opts.Out)
-			if err != nil {
-				return ShellEnvironment{}, err
-			}
+		pkg, err := oci.LoadPackageModel(meta)
+		if err != nil {
+			return ShellEnvironment{}, err
+		}
+		defaultTool, ok := pkg.DefaultTool()
+		if !ok {
+			return ShellEnvironment{}, fmt.Errorf("provider %s/%s@%s has no default tool", meta.Namespace, meta.Name, meta.Version)
+		}
+		plugin, err := registry.MustGet(defaultTool.Spec.Runtime.Type)
+		if err != nil {
+			return ShellEnvironment{}, err
+		}
+		resolvedTool, err := plugin.Resolve(defaultTool, tinxruntime.Context{
+			Home:          home,
+			WorkspaceRoot: root,
+			Alias:         alias,
+			Metadata:      meta,
+			Package:       pkg,
+			GoOS:          goruntime.GOOS,
+			GoArch:        goruntime.GOARCH,
+			WorkingDir:    root,
+			Stdout:        opts.Out,
+			Stderr:        opts.Out,
+		})
+		if err != nil {
+			return ShellEnvironment{}, err
 		}
 		providerEnv, providerPath, err := tinxruntime.ResolveProviderEnvironment(tinxruntime.ProviderEnvironmentSpec{
 			Home:          home,
 			WorkspaceRoot: root,
 			Alias:         alias,
-			BinaryPath:    binaryPath,
+			ToolName:      defaultTool.Metadata.Name,
+			BinaryPath:    resolvedTool.BinaryPath,
 			Metadata:      meta,
 		})
 		if err != nil {
@@ -87,8 +125,28 @@ func BuildShellEnvironment(root, home string, aliases map[string]string, opts Sh
 			return ShellEnvironment{}, err
 		}
 		pathEntries = appendWorkspacePaths(pathEntries, providerPath...)
-		addAliasEnvironment(env, alias, meta, binaryPath, home)
-		if err := writeProviderShim(filepath.Join(shimDir, alias), binaryPath); err != nil {
+		addAliasEnvironment(env, alias, meta, resolvedTool.BinaryPath, home)
+		shimTargets[alias] = shimTarget{Alias: alias, Tool: defaultTool.Metadata.Name}
+		for _, tool := range pkg.SortedTools() {
+			for _, provided := range tool.Spec.Provides {
+				if strings.TrimSpace(provided) == "" {
+					continue
+				}
+				if _, exists := shimTargets[provided]; exists {
+					continue
+				}
+				shimTargets[provided] = shimTarget{Alias: alias, Tool: tool.Metadata.Name}
+			}
+		}
+	}
+	shimNames := make([]string, 0, len(shimTargets))
+	for name := range shimTargets {
+		shimNames = append(shimNames, name)
+	}
+	sort.Strings(shimNames)
+	for _, name := range shimNames {
+		target := shimTargets[name]
+		if err := writeProviderShim(filepath.Join(shimDir, name), tinxBinary, root, home, target.Alias, target.Tool); err != nil {
 			return ShellEnvironment{}, err
 		}
 	}
@@ -177,11 +235,11 @@ func sanitizeAlias(alias string) string {
 	return strings.Trim(builder.String(), "_")
 }
 
-func writeProviderShim(path, binaryPath string) error {
+func writeProviderShim(path, tinxBinary, workspaceRoot, home, alias, tool string) error {
 	content := strings.Join([]string{
 		"#!/bin/sh",
 		"set -eu",
-		"exec " + shellQuote(binaryPath) + ` "$@"`,
+		"TINX_INTERNAL_CLI=1 exec " + shellQuote(tinxBinary) + " --tinx-home " + shellQuote(home) + " __shim --workspace-root " + shellQuote(workspaceRoot) + " --alias " + shellQuote(alias) + " --tool " + shellQuote(tool) + ` -- "$@"`,
 		"",
 	}, "\n")
 	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
@@ -226,4 +284,13 @@ func shellQuote(value string) string {
 		return "''"
 	}
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }

@@ -26,6 +26,9 @@ type SyncResult struct {
 }
 
 func Sync(ctx context.Context, root string, config Config, opts SyncOptions) (SyncResult, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if err := config.Normalize(); err != nil {
 		return SyncResult{}, err
 	}
@@ -118,16 +121,7 @@ func workspaceSourcePinned(source string) bool {
 	if trimmed == "" {
 		return false
 	}
-	if strings.Contains(trimmed, "@") {
-		return true
-	}
-	if idx := strings.LastIndex(trimmed, ":"); idx > 0 {
-		after := trimmed[idx+1:]
-		if !strings.Contains(after, "/") {
-			return true
-		}
-	}
-	return false
+	return strings.Contains(trimmed, "@")
 }
 
 func lockedProviderResolvedSource(meta state.ProviderMetadata, installSource string) string {

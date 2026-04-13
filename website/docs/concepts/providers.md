@@ -2,101 +2,155 @@
 title: Providers
 ---
 
-A **provider** is the unit of distribution in tinx.
+A **provider package** is the unit of distribution in tinx.
 
-It is a versioned OCI artifact that packages a tool.
+It is a versioned OCI artifact that can expose one or more tools plus the bundles, assets, and environment data those tools need at runtime.
 
-Think of it as a portable tool package.
+Think of it as a portable tool package with an internal dependency graph.
 
-## Responsibilities
+## What a provider package owns
 
-A provider is responsible for:
+A provider package is responsible for:
 
-- shipping binaries
-- defining an entrypoint
-- declaring supported platforms
-- optionally providing assets
-- defining environment configuration
+- publishing tool resources and marking one as the default tool
+- shipping bundle layers for platform binaries or asset payloads
+- mounting assets into the provider store when needed
+- exporting environment variables and path entries
+- declaring tool-to-tool dependencies inside the same provider
 
-## Provider structure
+## Canonical structure
 
 ```yaml
+apiVersion: tinx.io/v1
 kind: Provider
 metadata:
-  namespace: sourceplane
-  name: echo-provider
+  namespace: acme
+  name: setup-kubectl
   version: v0.1.0
 spec:
-  runtime: binary
-  entrypoint: echo-provider
-  platforms:
-    - os: linux
-      arch: amd64
-      binary: bin/linux/amd64/echo-provider
-  capabilities:
-    plan:
-      description: Generate a plan
+  tools:
+    - name: setup-kubectl
+      runtime: oci
+      from: bundle.setup-kubectl
+      provides:
+        - setup-kubectl
+    - name: kubectl
+      default: true
+      runtime: local
+      install:
+        tool: setup-kubectl
+        path: bin/kubectl
+      dependsOn:
+        - tool: setup-kubectl
+      provides:
+        - kubectl
+  bundles:
+    - name: setup-kubectl
+      layers:
+        - platform:
+            os: linux
+            arch: amd64
+          mediaType: application/vnd.tinx.tool.binary
+          source: bin/linux/amd64/setup-kubectl
+  environments:
+    - name: default-env
+      variables:
+        KUBECTL_PROVIDER_REF: ${provider_ref}
+      export:
+        - KUBECTL_PROVIDER_REF
 ```
 
-## Components
+In that model:
 
-### Binary layer
+- `setup-kubectl` is a bundled installer tool
+- `kubectl` is the user-facing tool
+- the workspace alias points at the default tool
+- the first `kubectl` execution can trigger the installer tool lazily
 
-- platform-specific executables
-- required for execution
+The canonical provider model is resource-based, but tinx also accepts the legacy single-tool manifest shorthand and normalizes it into the same internal representation.
 
-### Assets layer
+## Resource kinds
 
-- templates
-- certificates
-- configuration files
+### Tool
+
+Tools define:
+
+- the runtime plugin to use
+- where the tool comes from
+- which command names should appear in the workspace
+- which other tools must exist before this tool runs
+
+### Bundle
+
+Bundles hold immutable OCI-backed payloads:
+
+- platform-specific binary layers for `oci` tools
+- tar layers for assets
+- any other packaged content the provider needs at runtime
 
 ```yaml
-layers:
-  assets:
-    root: assets
+bundles:
+  - name: policy-assets
+    type: asset
+    platforms:
+      - os: any
+        arch: any
+        source: assets/policy
 ```
 
-### Metadata
+### Asset
 
-- capabilities
-- environment variables
-- PATH extensions
+Assets mount bundle content into the provider store so tools and environments can reference it through `${provider_assets}`.
+
+### Environment
+
+Environment resources export variables and path entries into workspace execution.
+
+## Alias versus provided commands
+
+Every workspace provider entry creates an alias that resolves to the provider default tool. tinx also creates shims for every command in `provides`.
+
+That means one provider package can surface commands such as:
+
+- a default alias like `kubectl`
+- an installer command like `setup-kubectl`
+- additional companion commands such as `npm` or `npx`
+
+## Authoring modes
+
+You can author the same provider package in two ways:
+
+- **Inline Provider document**: `tools`, `bundles`, `assets`, and `environments` live under one `Provider` document.
+- **Multi-document package**: separate `Tool`, `Bundle`, `Asset`, and `Environment` documents share one file.
+
+tinx normalizes both styles into the same internal package model.
+
+## Legacy compatibility
+
+tinx still accepts the legacy single-binary shorthand with `runtime: binary`, `entrypoint`, and `platforms`. That shorthand is normalized into:
+
+- one default `Tool`
+- one `Bundle`
+- one `Environment`
+- one `Asset` mount when assets are declared
 
 ## Distribution model
 
-Providers are distributed as:
+Provider packages are distributed as:
 
 - OCI image layouts for local use
 - OCI registry artifacts for remote use
 
 That gives tinx standard registry interoperability, caching, and versioning.
 
-## Design properties
+## What a provider package does not do
 
-### Immutable
+- choose the active workspace
+- resolve provider-to-provider orchestration across a workspace
+- decide when commands run
+- own global host state
 
-A provider version does not change once published.
-
-### Portable
-
-A provider runs across environments using OCI distribution.
-
-### Self-contained
-
-It includes everything required for execution.
-
-### Simple interface
-
-It exposes a binary, not a custom protocol.
-
-## What a provider does not do
-
-- manage dependencies between providers
-- decide when to execute
-- control the runtime environment globally
-
-It packages. It does not orchestrate.
+Provider packages define tools and runtime inputs. Workspaces and the runtime orchestrate them.
 
 ## Provider reference forms
 

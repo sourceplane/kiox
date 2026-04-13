@@ -14,14 +14,15 @@ The runtime is responsible for:
 
 - resolving workspace context
 - syncing providers
-- materializing binaries
+- writing lazy shims
+- materializing or installing tools
 - constructing the environment
 - executing commands
 
 ## Runtime pipeline
 
 ```text
-Workspace → Sync → Materialize → Build Env → Execute
+Workspace → Sync → Build Env → Resolve Tool Plan → Materialize/Install → Execute
 ```
 
 ### 1. Resolve workspace
@@ -31,34 +32,47 @@ Workspace → Sync → Materialize → Build Env → Execute
 
 ### 2. Sync providers
 
-- ensure metadata is available
+- ensure metadata and cached OCI content are available
 - validate sources
 
-### 3. Materialize
+### 3. Build environment
 
-- extract platform-specific binaries
-- extract assets when needed
-
-### 4. Build environment
-
+- create shims for aliases and provided commands
+- resolve default tool paths for environment construction
 - generate `PATH`
 - merge environment variables
-- create command shims
+- write `.workspace/env` and `.workspace/path`
 
-### 5. Execute
+### 4. Resolve tool plan
 
-- resolve the command from `PATH`
-- spawn the process
+- enter the shim for the requested command
+- resolve the target tool and any `dependsOn` tools
+- attach tool-scoped environments and path entries
+
+### 5. Materialize and execute
+
+- install missing tools via the appropriate runtime plugin
+- spawn the target process
 
 ## Execution model
 
 Execution is simple:
 
 - commands are resolved via `PATH`
-- providers behave like normal binaries
+- providers behave like normal commands
 - environment is preconfigured
 
-No RPC. No plugins. No extra protocol layer.
+There is no provider RPC protocol. Runtime plugins are an internal execution detail.
+
+## Static versus dynamic PATH
+
+The workspace path file contains the static shell path order:
+
+1. `.workspace/bin`
+2. provider and environment path entries
+3. host `PATH`
+
+When a shim resolves a tool plan, tinx can add extra tool-specific directories for that launched process. That is how lazily installed tools become executable without rewriting the workspace path file on every run.
 
 ## Commands that enter the runtime
 
@@ -72,9 +86,11 @@ tinx -- node build
 
 The runtime builds:
 
-- `.workspace/bin` for command entrypoints
+- `.workspace/bin` for aliases and provided commands
 - `.workspace/env` for environment variables
 - `.workspace/path` for additional `PATH` entries
+
+It rebuilds those artifacts whenever the workspace is synced.
 
 Runtime variables include:
 
@@ -87,6 +103,16 @@ Runtime variables include:
 - `TINX_PROVIDER_<ALIAS>_HOME`
 - `TINX_PROVIDER_<ALIAS>_BINARY`
 
+`TINX_PROVIDER_<ALIAS>_BINARY` points at the resolved default tool path and may not exist yet for lazily materialized tools.
+
+## Built-in runtime plugins
+
+The current built-in plugins are:
+
+- `oci` for bundle-backed binaries
+- `script` for tools installed by an on-demand shell script
+- `local` for tools executed from an existing path, including managed-install targets
+
 ## Design properties
 
 ### Deterministic
@@ -95,7 +121,7 @@ The same inputs produce the same execution behavior.
 
 ### Lazy
 
-Binaries are extracted only when needed.
+Bundle-backed binaries and script-backed tool installs happen only when needed.
 
 ### Transparent
 

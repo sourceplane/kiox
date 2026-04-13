@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/sourceplane/tinx/internal/build"
-	"github.com/sourceplane/tinx/internal/manifest"
+	"github.com/sourceplane/tinx/internal/core"
 	"github.com/sourceplane/tinx/internal/oci"
+	"github.com/sourceplane/tinx/internal/parser"
 )
 
 func newReleaseCommand() *cobra.Command {
@@ -34,7 +36,7 @@ func newReleaseCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("resolve manifest path: %w", err)
 			}
-			provider, err := manifest.Load(absManifest)
+			pkg, err := parser.Load(absManifest)
 			if err != nil {
 				return err
 			}
@@ -61,19 +63,13 @@ func newReleaseCommand() *cobra.Command {
 						return err
 					}
 				} else {
-					if err := build.BuildProvider(build.GoBuildOptions{Provider: provider, ModuleRoot: moduleRoot, MainPkg: mainPkg, OutputRoot: absDist, Version: provider.Metadata.Version}); err != nil {
+					if err := build.BuildProvider(build.GoBuildOptions{Package: pkg, ModuleRoot: moduleRoot, MainPkg: mainPkg, OutputRoot: absDist, Version: pkg.Provider.Metadata.Version}); err != nil {
 						return err
 					}
 				}
 			}
-			if assetsRoot := provider.AssetsRoot(); assetsRoot != "" {
-				srcAssets := filepath.Join(moduleRoot, filepath.FromSlash(assetsRoot))
-				dstAssets := filepath.Join(absDist, filepath.FromSlash(assetsRoot))
-				if _, err := os.Stat(srcAssets); err == nil {
-					if err := copyReleaseTree(srcAssets, dstAssets); err != nil {
-						return fmt.Errorf("stage assets for packaging: %w", err)
-					}
-				}
+			if err := stageBundleSources(pkg, moduleRoot, absDist); err != nil {
+				return err
 			}
 			result, err := oci.Pack(oci.PackOptions{ManifestPath: absManifest, ArtifactRoot: absDist, OutputDir: absOutput, Tag: tag})
 			if err != nil {
@@ -101,6 +97,32 @@ func newReleaseCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&delegateGoReleaser, "delegate-gorelaser", false, "delegate provider builds to goreleaser")
 	cmd.Flags().StringVar(&goreleaserConfig, "goreleaser-config", "", "path to .goreleaser.yml/.yaml when goreleaser delegation is enabled")
 	return cmd
+}
+
+func stageBundleSources(pkg core.Package, moduleRoot, distRoot string) error {
+	for _, bundle := range pkg.Bundles {
+		for _, layer := range bundle.Spec.Layers {
+			if !strings.HasSuffix(strings.TrimSpace(layer.MediaType), "+tar") {
+				continue
+			}
+			source := filepath.FromSlash(strings.TrimSpace(layer.Source))
+			if source == "" {
+				continue
+			}
+			srcPath := filepath.Join(moduleRoot, source)
+			dstPath := filepath.Join(distRoot, source)
+			if _, err := os.Stat(srcPath); err != nil {
+				if os.IsNotExist(err) {
+					continue
+				}
+				return fmt.Errorf("stat bundle source %s: %w", srcPath, err)
+			}
+			if err := copyReleaseTree(srcPath, dstPath); err != nil {
+				return fmt.Errorf("stage bundle source %s: %w", layer.Source, err)
+			}
+		}
+	}
+	return nil
 }
 
 func copyReleaseTree(srcDir, dstDir string) error {

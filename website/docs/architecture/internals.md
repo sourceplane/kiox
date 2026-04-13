@@ -23,11 +23,13 @@ Command
 | Package | Responsibility |
 | --- | --- |
 | `internal/cmd` | Cobra commands, workspace targeting, CLI behavior |
+| `internal/core` | Normalized provider package model and tool dependency resolution |
+| `internal/parser` | Manifest loading, legacy normalization, and multi-document parsing |
 | `internal/workspace` | Workspace manifests, lock files, sync, shell artifact generation |
-| `internal/manifest` | Provider manifest schema and validation |
 | `internal/oci` | OCI packing, remote install, local layout reads, runtime materialization |
 | `internal/state` | tinx home layout, aliases, active workspace, provider metadata |
-| `internal/runtime` | Environment assembly, PATH handling, command execution |
+| `internal/runtime` | Environment assembly, PATH handling, process execution helpers |
+| `internal/runtimes` | Built-in runtime plugins for `oci`, `script`, and `local` tools |
 | `internal/build` | Go and GoReleaser build pipelines for providers |
 
 ## Workspace pipeline
@@ -43,8 +45,12 @@ tinx follows this path:
 1. `internal/cmd` resolves the selected workspace by flag, discovery, or active workspace record.
 2. `internal/workspace` loads and normalizes the workspace manifest.
 3. `internal/workspace` syncs provider sources and updates `tinx.lock`.
-4. `internal/workspace` builds `.workspace/env`, `.workspace/path`, and `.workspace/bin/<alias>`.
-5. `internal/runtime` resolves the command from the generated `PATH` and runs it.
+4. `internal/workspace` builds `.workspace/env`, `.workspace/path`, and lazy shims under `.workspace/bin/`.
+5. The selected shim re-enters `internal/cmd` through the hidden `__shim` command.
+6. `internal/core` resolves the tool dependency plan.
+7. `internal/runtimes` installs missing tools and `internal/runtime` executes the target process.
+
+The important architectural shift is that execution is now planned per tool, not per provider binary.
 
 ## Packaging pipeline
 
@@ -56,9 +62,11 @@ tinx release --manifest tinx.yaml --main ./cmd/my-provider --push ghcr.io/acme/m
 
 tinx follows this path:
 
-1. `internal/build` compiles the binaries listed in `spec.platforms`.
-2. `internal/oci` writes config, manifest, metadata, assets, and binary layers into an OCI layout.
-3. `internal/oci` optionally pushes the layout to a registry through ORAS.
+1. `internal/parser` normalizes the provider manifest into a package model.
+2. `internal/build` infers build targets from normalized bundle layer sources.
+3. `internal/build` compiles the required bundle-backed binaries.
+4. `internal/oci` stages bundle sources, writes config, manifest, normalized package metadata, and bundle layers into an OCI layout.
+5. `internal/oci` optionally pushes the layout to a registry through ORAS.
 
 ## Storage model
 
@@ -73,7 +81,9 @@ The workspace is for project-local runtime state. tinx home is for reusable prov
 
 - **Workspace first**: execution always goes through a workspace shell.
 - **OCI everywhere**: providers are packaged and distributed as OCI artifacts.
-- **Lazy materialization**: metadata can exist before runtime binaries are extracted.
+- **Lazy materialization**: metadata can exist before tools or assets are materialized.
+- **Normalized packages**: legacy manifests and new resource-based manifests share one internal model.
+- **Plugin-driven execution**: runtime behavior lives in built-in plugins behind a shared interface.
 - **Explicit failures**: missing workspaces, missing commands, and environment conflicts fail early.
 
 ## Key takeaway

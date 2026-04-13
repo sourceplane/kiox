@@ -2,19 +2,19 @@
 title: Run Node.js in a workspace
 ---
 
-This example shows the workspace flow for a Node.js provider. Replace the provider reference with the registry namespace and version you publish internally.
+This example shows the workspace flow for a Node provider package. Replace the provider reference with the registry namespace and version you publish internally.
 
 ## Create and populate a workspace
 
 ```bash
 tinx init app
-tinx provider add core/node as node
+tinx add core/node as node
 ```
 
 If you need to pin a version or registry:
 
 ```bash
-tinx provider add ghcr.io/acme/node-provider:v20.19.0 as node
+tinx add ghcr.io/acme/node-provider:v20.19.0 as node
 ```
 
 ## Run Node commands
@@ -23,6 +23,13 @@ tinx provider add ghcr.io/acme/node-provider:v20.19.0 as node
 tinx --workspace app -- node --version
 tinx --workspace app -- node build.js
 tinx --workspace app exec node --version
+```
+
+If your provider package exposes companion commands through `provides`, those show up in the same workspace too:
+
+```bash
+tinx --workspace app -- npm test
+tinx --workspace app -- npx eslint .
 ```
 
 ## Use the interactive shell
@@ -36,6 +43,7 @@ npm test
 ## Check the runtime state
 
 ```bash
+tinx --workspace app ls
 tinx --workspace app status --verbose
 cat app/.workspace/path
 ```

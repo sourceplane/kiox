@@ -2,11 +2,20 @@
 title: Provider examples
 ---
 
-Use the example provider in this repository as the smallest working reference, then layer on assets and richer commands as needed.
+Use the provider fixtures in this repository as working references for both the legacy and normalized manifest styles.
 
-## Example from this repository
+## Fixtures in this repository
 
-`testdata/echo-provider/tinx.yaml` declares a binary provider with one documented capability:
+- `testdata/echo-provider`: legacy single-binary shorthand with `runtime: binary`
+- `testdata/multi-tool-provider`: multi-document normalized package with an OCI setup tool and a lazy script tool
+- `testdata/inline-tool-provider`: inline normalized package with bundled assets and synthesized provider contents
+- `testdata/setup-kubectl`: managed-install provider where a bundled setup tool lazily creates the default `kubectl` tool
+
+Manual commands for all fixtures live in `TEST_PROVIDERS.md`.
+
+## Legacy compatibility fixture
+
+`testdata/echo-provider/tinx.yaml` keeps the old single-tool authoring model available:
 
 ```yaml
 apiVersion: tinx.io/v1
@@ -33,41 +42,111 @@ spec:
       root: assets
 ```
 
-Build and run it locally:
+Use it when you want the shortest possible provider manifest or need to validate backward compatibility.
 
-```bash
-make release-example
-./bin/tinx init demo -p testdata/echo-provider/oci as echo
-./bin/tinx --workspace demo -- echo plan
-```
+## Multi-document normalized fixture
 
-## Toolchain provider pattern
+`testdata/multi-tool-provider/tinx.yaml` shows the current package model split across several YAML documents:
 
-A provider that wraps a toolchain usually exposes one entrypoint and keeps helper tools in `spec.path`:
+- `setup-echo` is an `oci` tool backed by bundle layers
+- `echo-tool` is a `script` tool that depends on `setup-echo`
+- `default-env` exports variables into the workspace shell
+- the workspace exposes both the provider alias and the tool's `provides` command
+
+## Inline normalized fixture
+
+`testdata/inline-tool-provider/tinx.yaml` keeps everything in one `Provider` document:
+
+- inline `tools`, `bundles`, `assets`, and `environments`
+- synthesized `spec.contents`
+- an asset tar bundle mounted into the provider store
+- a lazy script tool that reads from the mounted asset path
+
+## Managed-install fixture
+
+`testdata/setup-kubectl/tinx.yaml` demonstrates the new setup-provider flow:
+
+- `setup-kubectl` is a bundle-backed installer tool
+- `kubectl` is a `local` tool with `install.tool` and `install.path`
+- the shim manager executes `setup-kubectl` only when `kubectl` is first requested
 
 ```yaml
-spec:
-  entrypoint: node
-  path:
-    - tools/bin
+tools:
+  - name: setup-kubectl
+    runtime: oci
+    from: bundle.setup-kubectl
+    provides:
+      - setup-kubectl
+  - name: kubectl
+    default: true
+    runtime: local
+    install:
+      tool: setup-kubectl
+      path: bin/kubectl
+    dependsOn:
+      - tool: setup-kubectl
+    provides:
+      - kubectl
 ```
 
-That pattern is useful when the provider needs bundled helpers such as wrappers, plugins, or companion binaries.
+## Script-installed tool pattern
+
+Use one bundled setup tool to install a lazy script-backed command:
+
+```yaml
+tools:
+  - name: setup-echo
+    runtime: oci
+    from: bundle.setup-echo
+  - name: echo-tool
+    default: true
+    runtime: script
+    script: setup-echo "$TINX_TOOL_BIN"
+    dependsOn:
+      - tool: setup-echo
+```
+
+## Multi-command provider pattern
+
+A provider can expose multiple command names from one default tool:
+
+```yaml
+tools:
+  - name: node
+    default: true
+    runtime: oci
+    from: bundle.node
+    provides:
+      - node
+      - npm
+      - npx
+```
+
+That pattern is useful when one packaged binary tree should show up through several familiar command names.
 
 ## Asset-heavy provider pattern
 
-Providers that need templates, certificates, or policy bundles should ship them as an assets layer:
+Providers that need templates, certificates, or policy bundles should package them as asset bundles and mount them into the provider store:
 
 ```yaml
-spec:
-  env:
-    POLICY_ROOT: ${provider_assets}/policy
-  layers:
-    assets:
-      root: assets
-      includes:
-        - policy/**
-        - certs/*.pem
+bundles:
+  - name: policy-assets
+    type: asset
+    platforms:
+      - os: any
+        arch: any
+        source: assets/policy
+assets:
+  - name: policy-assets
+    from: bundle.policy-assets
+    mount:
+      path: assets
+environments:
+  - name: default-env
+    variables:
+      POLICY_ROOT: ${provider_assets}/policy
+    export:
+      - POLICY_ROOT
 ```
 
-The assets are extracted into the provider store when the runtime is materialized.
+The asset bundle is extracted into the provider store when the runtime first needs the provider.

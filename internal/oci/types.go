@@ -2,6 +2,8 @@ package oci
 
 import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+
+	"github.com/sourceplane/tinx/internal/core"
 )
 
 const (
@@ -23,24 +25,7 @@ type ProviderConfig struct {
 	License     string `json:"license,omitempty"`
 	Runtime     string `json:"runtime"`
 	Entrypoint  string `json:"entrypoint"`
-}
-
-type ProviderMetadata struct {
-	Namespace              string             `json:"namespace"`
-	Name                   string             `json:"name"`
-	Version                string             `json:"version"`
-	Description            string             `json:"description,omitempty"`
-	Entrypoint             string             `json:"entrypoint"`
-	Runtime                string             `json:"runtime"`
-	Capabilities           []string           `json:"capabilities,omitempty"`
-	CapabilityDescriptions map[string]string  `json:"capabilityDescriptions,omitempty"`
-	Platforms              []ProviderPlatform `json:"platforms,omitempty"`
-}
-
-type ProviderPlatform struct {
-	OS     string `json:"os"`
-	Arch   string `json:"arch"`
-	Binary string `json:"binary"`
+	DefaultTool string `json:"defaultTool,omitempty"`
 }
 
 type ImageManifest struct {
@@ -70,6 +55,13 @@ type ProviderManifestView struct {
 	ConfigDescriptor   ocispec.Descriptor
 	ManifestDescriptor ocispec.Descriptor
 	MetadataDescriptor ocispec.Descriptor
-	AssetsDescriptor   *ocispec.Descriptor
-	BinaryDescriptors  map[string]ocispec.Descriptor
+	BundleLayers       []BundleLayerDescriptor
+}
+
+type BundleLayerDescriptor struct {
+	Bundle     string
+	Platform   core.PlatformSpec
+	Source     string
+	MediaType  string
+	Descriptor ocispec.Descriptor
 }

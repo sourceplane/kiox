@@ -5,12 +5,17 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"sort"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/spf13/cobra"
 
+	"github.com/sourceplane/tinx/internal/core"
+	"github.com/sourceplane/tinx/internal/oci"
+	truntime "github.com/sourceplane/tinx/internal/runtime"
+	"github.com/sourceplane/tinx/internal/runtimes"
 	"github.com/sourceplane/tinx/internal/state"
 	"github.com/sourceplane/tinx/internal/workspace"
 )
@@ -31,6 +36,7 @@ type inventoryScope struct {
 	Status    string
 	Detail    string
 	Providers []providerInventory
+	Tools     []toolInventory
 }
 
 type providerInventory struct {
@@ -41,13 +47,22 @@ type providerInventory struct {
 	Status     string
 	Runtime    string
 	Invoke     string
+	Metadata   state.ProviderMetadata
+}
+
+type toolInventory struct {
+	Name     string
+	Commands []string
+	Provider string
+	Runtime  string
+	Status   string
 }
 
 func newListCommand(root *rootOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "list [workspace|default]",
 		Aliases: []string{"ls"},
-		Short:   "List providers or inspect workspace inventory",
+		Short:   "List providers and tools or inspect workspace inventory",
 		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			reference := ""
@@ -241,6 +256,11 @@ func inspectWorkspaceScope(root string, registeredNames []string, activeRoot str
 			return inventoryScope{}, err
 		}
 		scope.Providers = providers
+		tools, err := inspectToolInventory(scope.Home, providers)
+		if err != nil {
+			return inventoryScope{}, err
+		}
+		scope.Tools = tools
 	}
 	return scope, nil
 }
@@ -258,6 +278,11 @@ func inspectDefaultScope(globalHome string, includeProviders bool) (inventorySco
 			return inventoryScope{}, err
 		}
 		scope.Providers = providers
+		tools, err := inspectToolInventory(globalHome, providers)
+		if err != nil {
+			return inventoryScope{}, err
+		}
+		scope.Tools = tools
 	}
 	return scope, nil
 }
@@ -296,6 +321,7 @@ func inspectProviderInventory(home string, workspaceScope bool) ([]providerInven
 			Status:     "ready",
 			Runtime:    fallbackDisplay(strings.TrimSpace(meta.Runtime)),
 			Invoke:     providerInvokeHint(meta, providerAliases, workspaceScope),
+			Metadata:   meta,
 		})
 	}
 
@@ -326,6 +352,87 @@ func inspectProviderInventory(home string, workspaceScope bool) ([]providerInven
 		return items[i].Ref < items[j].Ref
 	})
 	return items, nil
+}
+
+func inspectToolInventory(home string, providers []providerInventory) ([]toolInventory, error) {
+	registry, err := runtimes.NewBuiltinRegistry()
+	if err != nil {
+		return nil, err
+	}
+	items := make([]toolInventory, 0)
+	for _, provider := range providers {
+		if strings.TrimSpace(provider.Status) != "ready" {
+			continue
+		}
+		if strings.TrimSpace(provider.Metadata.Namespace) == "" || strings.TrimSpace(provider.Metadata.Name) == "" {
+			continue
+		}
+		pkg, err := oci.LoadPackageModel(provider.Metadata)
+		if err != nil {
+			return nil, err
+		}
+		toolCtx := truntime.Context{
+			Home:       home,
+			Alias:      firstNonEmpty(provider.Aliases...),
+			Metadata:   provider.Metadata,
+			Package:    pkg,
+			GoOS:       goruntime.GOOS,
+			GoArch:     goruntime.GOARCH,
+			WorkingDir: state.MetadataStoreRoot(provider.Metadata),
+		}
+		for _, tool := range pkg.SortedTools() {
+			item := toolInventory{
+				Name:     strings.TrimSpace(tool.Metadata.Name),
+				Commands: toolCommandNames(tool),
+				Provider: provider.Ref,
+				Runtime:  fallbackDisplay(strings.TrimSpace(tool.Spec.Runtime.Type)),
+				Status:   "invalid",
+			}
+			plugin, err := registry.MustGet(tool.Spec.Runtime.Type)
+			if err != nil {
+				items = append(items, item)
+				continue
+			}
+			resolved, err := plugin.Resolve(tool, toolCtx)
+			if err != nil {
+				items = append(items, item)
+				continue
+			}
+			installed, err := plugin.IsInstalled(resolved, toolCtx)
+			item.Status = toolInstallStatus(tool, installed, err)
+			items = append(items, item)
+		}
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Name != items[j].Name {
+			return items[i].Name < items[j].Name
+		}
+		return items[i].Provider < items[j].Provider
+	})
+	return items, nil
+}
+
+func toolCommandNames(tool core.Tool) []string {
+	if names := sortedStrings(tool.Spec.Provides); len(names) > 0 {
+		return names
+	}
+	if name := strings.TrimSpace(tool.Metadata.Name); name != "" {
+		return []string{name}
+	}
+	return nil
+}
+
+func toolInstallStatus(tool core.Tool, installed bool, err error) string {
+	if err != nil {
+		return "invalid"
+	}
+	if installed {
+		return "ready"
+	}
+	if strings.TrimSpace(tool.Spec.Install.Strategy) == core.InstallLazy {
+		return "lazy"
+	}
+	return "missing"
 }
 
 func renderWorkspaceScopes(w io.Writer, scopes []inventoryScope, opts workspaceListOptions) {
@@ -370,6 +477,14 @@ func renderProviderScope(w io.Writer, scope inventoryScope) {
 	renderProviderTable(w, scope.Providers)
 	writeLine(w, "")
 	writeLine(w, "%s", summarizeProviders(scope.Providers))
+	if len(scope.Tools) == 0 {
+		return
+	}
+	writeLine(w, "")
+	writeLine(w, "Tools:")
+	renderToolTable(w, scope.Tools)
+	writeLine(w, "")
+	writeLine(w, "%s", summarizeTools(scope.Tools))
 }
 
 func renderProviderTable(w io.Writer, providers []providerInventory) {
@@ -387,6 +502,31 @@ func renderProviderTable(w io.Writer, providers []providerInventory) {
 		})
 	}
 	renderTable(w, []string{"NAME", "STATUS", "PROVIDER", "VERSION"}, rows)
+}
+
+func renderToolTable(w io.Writer, tools []toolInventory) {
+	if len(tools) == 0 {
+		writeLine(w, "no tools installed")
+		return
+	}
+	rows := make([][]string, 0, len(tools))
+	for _, tool := range tools {
+		rows = append(rows, []string{
+			fallbackDisplay(tool.Name),
+			inventoryStatusDisplay(tool.Status),
+			displayToolCommands(tool.Commands),
+			fallbackDisplay(tool.Provider),
+			fallbackDisplay(tool.Runtime),
+		})
+	}
+	renderTable(w, []string{"TOOL", "STATUS", "COMMANDS", "PROVIDER", "RUNTIME"}, rows)
+}
+
+func displayToolCommands(commands []string) string {
+	if len(commands) == 0 {
+		return "-"
+	}
+	return strings.Join(commands, ",")
 }
 
 func loadWorkspaceConfigAtRoot(root string) (workspace.Config, string, error) {
@@ -670,6 +810,8 @@ func inventoryStatusSymbol(status string) string {
 	switch strings.ToLower(strings.TrimSpace(status)) {
 	case "ready":
 		return "✓"
+	case "lazy":
+		return "~"
 	case "missing":
 		return "✗"
 	case "partial":
@@ -697,6 +839,14 @@ func summarizeProviders(providers []providerInventory) string {
 	return summarizeInventory(len(providers), "provider", "providers", counts)
 }
 
+func summarizeTools(tools []toolInventory) string {
+	counts := make(map[string]int, len(tools))
+	for _, tool := range tools {
+		counts[strings.ToLower(strings.TrimSpace(tool.Status))]++
+	}
+	return summarizeInventory(len(tools), "tool", "tools", counts)
+}
+
 func summarizeInventory(total int, singular, plural string, counts map[string]int) string {
 	summary := countLabel(total, singular, plural)
 	breakdown := statusBreakdown(counts)
@@ -714,7 +864,7 @@ func countLabel(total int, singular, plural string) string {
 }
 
 func statusBreakdown(counts map[string]int) string {
-	ordered := []string{"ready", "missing", "invalid", "partial", "unknown"}
+	ordered := []string{"ready", "lazy", "missing", "invalid", "partial", "unknown"}
 	parts := make([]string, 0, len(ordered))
 	for _, status := range ordered {
 		if count := counts[status]; count > 0 {

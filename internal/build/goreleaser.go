@@ -10,7 +10,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/sourceplane/tinx/internal/manifest"
+	"github.com/sourceplane/tinx/internal/parser"
 )
 
 type GoReleaserOptions struct {
@@ -123,60 +123,21 @@ func generateGoReleaserConfigFromManifest(moduleRoot, manifestPath string) (stri
 		resolvedManifest = filepath.Join(moduleRoot, resolvedManifest)
 	}
 
-	provider, err := manifest.Load(resolvedManifest)
+	pkg, err := parser.Load(resolvedManifest)
 	if err != nil {
 		return "", err
 	}
-
-	mainPkg := detectMainPackage(moduleRoot, provider.Metadata.Name)
-	platformPairs := make(map[string]map[string]struct{})
-	goosValues := make(map[string]struct{})
-	goarchValues := make(map[string]struct{})
-	for _, platform := range provider.Spec.Platforms {
-		goosValues[platform.OS] = struct{}{}
-		goarchValues[platform.Arch] = struct{}{}
-		arches, ok := platformPairs[platform.OS]
-		if !ok {
-			arches = map[string]struct{}{}
-			platformPairs[platform.OS] = arches
-		}
-		arches[platform.Arch] = struct{}{}
-	}
-
-	goos := sortedKeys(goosValues)
-	goarch := sortedKeys(goarchValues)
-	ignore := make([]generatedPlatformCombo, 0)
-	for _, osValue := range goos {
-		for _, archValue := range goarch {
-			arches := platformPairs[osValue]
-			if _, ok := arches[archValue]; ok {
-				continue
-			}
-			ignore = append(ignore, generatedPlatformCombo{Goos: osValue, Goarch: archValue})
-		}
-	}
+	targets := bundleBuildTargets(pkg)
+	builds := generateBuildsFromTargets(moduleRoot, pkg.Provider.Metadata.Version, targets)
 
 	cfg := generatedGoReleaserConfig{
-		ProjectName: provider.Metadata.Name,
+		ProjectName: pkg.Provider.Metadata.Name,
 		Dist:        "dist",
-		Builds: []generatedGoReleaserBuild{{
-			ID:      provider.Metadata.Name,
-			Main:    mainPkg,
-			Binary:  provider.Spec.Entrypoint,
-			Env:     []string{"CGO_ENABLED=0"},
-			Goos:    goos,
-			Goarch:  goarch,
-			Ignore:  ignore,
-			Ldflags: []string{ldflags(provider.Metadata.Version)},
-			Hooks: generatedGoReleaserBuildHook{Post: []string{
-				"mkdir -p dist/bin/{{ .Os }}/{{ .Arch }}",
-				fmt.Sprintf("cp {{ .Path }} dist/bin/{{ .Os }}/{{ .Arch }}/%s", provider.Spec.Entrypoint),
-			}},
-		}},
-		Archives:  []generatedArchive{{Formats: []string{"binary"}, NameTemplate: "{{ .Binary }}-{{ .Os }}-{{ .Arch }}"}},
-		Checksum:  generatedToggle{Disable: true},
-		Release:   generatedToggle{Disable: true},
-		Changelog: generatedToggle{Disable: true},
+		Builds:      builds,
+		Archives:    []generatedArchive{{Formats: []string{"binary"}, NameTemplate: "{{ .Binary }}-{{ .Os }}-{{ .Arch }}"}},
+		Checksum:    generatedToggle{Disable: true},
+		Release:     generatedToggle{Disable: true},
+		Changelog:   generatedToggle{Disable: true},
 	}
 
 	data, err := yaml.Marshal(cfg)
@@ -189,6 +150,92 @@ func generateGoReleaserConfigFromManifest(moduleRoot, manifestPath string) (stri
 		return "", fmt.Errorf("write generated goreleaser config: %w", err)
 	}
 	return path, nil
+}
+
+func generateBuildsFromTargets(moduleRoot, version string, targets []bundleBuildTarget) []generatedGoReleaserBuild {
+	grouped := make(map[string][]bundleBuildTarget)
+	order := make([]string, 0)
+	for _, target := range targets {
+		if _, ok := grouped[target.BinaryName]; !ok {
+			order = append(order, target.BinaryName)
+		}
+		grouped[target.BinaryName] = append(grouped[target.BinaryName], target)
+	}
+	sort.Strings(order)
+	builds := make([]generatedGoReleaserBuild, 0, len(targets))
+	for _, binaryName := range order {
+		groupTargets := grouped[binaryName]
+		if aggregate, ok := aggregateBuildTarget(binaryName, groupTargets); ok {
+			aggregate.Main = detectMainPackage(moduleRoot, binaryName)
+			aggregate.Ldflags = []string{ldflags(version)}
+			builds = append(builds, aggregate)
+			continue
+		}
+		for _, target := range groupTargets {
+			builds = append(builds, generatedGoReleaserBuild{
+				ID:      target.BinaryName + "-" + target.OS + "-" + target.Arch,
+				Main:    detectMainPackage(moduleRoot, target.BinaryName),
+				Binary:  target.BinaryName,
+				Env:     []string{"CGO_ENABLED=0"},
+				Goos:    []string{target.OS},
+				Goarch:  []string{target.Arch},
+				Ldflags: []string{ldflags(version)},
+				Hooks: generatedGoReleaserBuildHook{Post: []string{
+					fmt.Sprintf("mkdir -p dist/%s/%s", target.OS, target.Arch),
+					fmt.Sprintf("cp {{ .Path }} dist/%s", filepath.ToSlash(target.Source)),
+				}},
+			})
+		}
+	}
+	return builds
+}
+
+func aggregateBuildTarget(binaryName string, targets []bundleBuildTarget) (generatedGoReleaserBuild, bool) {
+	if len(targets) == 0 {
+		return generatedGoReleaserBuild{}, false
+	}
+	for _, target := range targets {
+		expected := filepath.ToSlash(filepath.Join("bin", target.OS, target.Arch, binaryName))
+		if filepath.ToSlash(target.Source) != expected {
+			return generatedGoReleaserBuild{}, false
+		}
+	}
+	goosValues := make(map[string]struct{})
+	goarchValues := make(map[string]struct{})
+	platformPairs := make(map[string]map[string]struct{})
+	for _, target := range targets {
+		goosValues[target.OS] = struct{}{}
+		goarchValues[target.Arch] = struct{}{}
+		arches, ok := platformPairs[target.OS]
+		if !ok {
+			arches = map[string]struct{}{}
+			platformPairs[target.OS] = arches
+		}
+		arches[target.Arch] = struct{}{}
+	}
+	goos := sortedKeys(goosValues)
+	goarch := sortedKeys(goarchValues)
+	ignore := make([]generatedPlatformCombo, 0)
+	for _, osValue := range goos {
+		for _, archValue := range goarch {
+			if _, ok := platformPairs[osValue][archValue]; ok {
+				continue
+			}
+			ignore = append(ignore, generatedPlatformCombo{Goos: osValue, Goarch: archValue})
+		}
+	}
+	return generatedGoReleaserBuild{
+		ID:     binaryName,
+		Binary: binaryName,
+		Env:    []string{"CGO_ENABLED=0"},
+		Goos:   goos,
+		Goarch: goarch,
+		Ignore: ignore,
+		Hooks: generatedGoReleaserBuildHook{Post: []string{
+			"mkdir -p dist/bin/{{ .Os }}/{{ .Arch }}",
+			fmt.Sprintf("cp {{ .Path }} dist/bin/{{ .Os }}/{{ .Arch }}/%s", binaryName),
+		}},
+	}, true
 }
 
 func sortedKeys(values map[string]struct{}) []string {

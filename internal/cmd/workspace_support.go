@@ -67,12 +67,14 @@ func (target *workspaceTarget) MissingError() error {
 }
 
 func executeCLI(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	commandCtx := defaultCommandContext(ctx)
 	parsedRoot, strippedArgs, err := extractRootArgs(args)
 	if err != nil {
 		return err
 	}
 	if len(strippedArgs) > 0 && strippedArgs[0] == "--" {
 		fallback := &cobra.Command{}
+		fallback.SetContext(commandCtx)
 		fallback.SetOut(stdout)
 		fallback.SetErr(stderr)
 		return runWorkspaceCommand(fallback, &parsedRoot, strippedArgs[1:])
@@ -81,7 +83,14 @@ func executeCLI(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	root.SetOut(stdout)
 	root.SetErr(stderr)
 	root.SetArgs(strippedArgs)
-	return root.ExecuteContext(ctx)
+	return root.ExecuteContext(commandCtx)
+}
+
+func defaultCommandContext(ctx context.Context) context.Context {
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
 }
 
 func ensureGlobalHome(override string) (string, error) {
@@ -132,6 +141,7 @@ func splitArgsAtDash(cmd *cobra.Command, args []string) ([]string, []string) {
 }
 
 func runWorkspaceCommand(cmd *cobra.Command, root *rootOptions, command []string) error {
+	commandCtx := defaultCommandContext(cmd.Context())
 	globalHome, err := ensureGlobalHome(root.Home)
 	if err != nil {
 		return err
@@ -146,7 +156,7 @@ func runWorkspaceCommand(cmd *cobra.Command, root *rootOptions, command []string
 	if err := requireReadyWorkspaceTarget(target); err != nil {
 		return err
 	}
-	result, err := workspace.Sync(cmd.Context(), target.Root, target.Config, workspace.SyncOptions{
+	result, err := workspace.Sync(commandCtx, target.Root, target.Config, workspace.SyncOptions{
 		Out:        cmd.ErrOrStderr(),
 		GlobalHome: globalHome,
 	})
@@ -154,7 +164,8 @@ func runWorkspaceCommand(cmd *cobra.Command, root *rootOptions, command []string
 		return err
 	}
 	shellEnv, err := workspace.BuildShellEnvironment(target.Root, result.Home, result.Aliases, workspace.ShellBuildOptions{
-		Out: cmd.ErrOrStderr(),
+		Out:        cmd.ErrOrStderr(),
+		GlobalHome: globalHome,
 	})
 	if err != nil {
 		return err

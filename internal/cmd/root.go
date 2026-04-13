@@ -53,6 +53,7 @@ func newRootCommand(opts *rootOptions) *cobra.Command {
 	cmd.AddCommand(newInstallCommand(opts))
 	cmd.AddCommand(newListCommand(opts))
 	cmd.AddCommand(newShellCommand(opts))
+	cmd.AddCommand(newShimCommand(opts))
 	cmd.AddCommand(newExecCommand(opts))
 	cmd.AddCommand(newRunCommand(opts))
 	cmd.AddCommand(newPackCommand())

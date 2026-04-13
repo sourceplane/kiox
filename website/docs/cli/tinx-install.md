@@ -2,7 +2,9 @@
 title: tinx install
 ---
 
-`tinx install` installs provider metadata into tinx home from either a registry reference or a local OCI layout. It does **not** run the provider. For execution, add the provider to a workspace and use `tinx shell`, `tinx exec`, or `tinx -- ...`.
+`tinx install` copies provider metadata and OCI content into tinx home from either a registry reference or a local OCI layout. It does **not** add the provider to a workspace and it does **not** materialize lazy tools yet.
+
+For execution, add the provider to a workspace and use `tinx shell`, `tinx exec`, or `tinx -- ...`.
 
 ## Common examples
 
@@ -18,7 +20,7 @@ Install from a local OCI layout:
 
 ```bash
 tinx install sourceplane/echo-provider --source ./testdata/echo-provider/oci
-tinx install sourceplane/echo-provider --source ./testdata/echo-provider/oci --tag v0.1.0
+tinx install acme/setup-kubectl --source ./testdata/setup-kubectl/oci --tag v0.1.0
 ```
 
 When you use `--source`, the reference must be `<namespace>/<name>` and tinx validates that the layout matches the requested provider.
@@ -29,9 +31,21 @@ Use `install` when you want to:
 
 - inspect provider metadata in tinx home
 - pre-populate a shared or cached tinx home directory
-- stage providers for CI or image builds
+- stage provider packages for CI or image builds
+- verify a local OCI layout without creating a workspace yet
 
 Use `provider add` when you want the provider available in a workspace.
+
+## What install does not do
+
+`install` does not:
+
+- create `.workspace/` artifacts
+- register a workspace alias
+- run `__shim`
+- extract or install lazy tools
+
+That last step still happens on the first real command execution inside a workspace.
 
 ## Help output
 
@@ -58,6 +72,6 @@ After install, add the provider to a workspace:
 
 ```bash
 tinx init demo
-tinx provider add ghcr.io/acme/node-provider:v20.19.0 as node
+tinx add ghcr.io/acme/node-provider:v20.19.0 as node
 tinx --workspace demo -- node --version
 ```
