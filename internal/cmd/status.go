@@ -18,7 +18,7 @@ func newStatusCommand(root *rootOptions) *cobra.Command {
 	var short bool
 	cmd := &cobra.Command{
 		Use:   "status",
-		Short: "Show the current workspace, providers, shims, and environment",
+		Short: "Show the current workspace, providers, tools, shims, and environment",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if verbose && short {
@@ -47,7 +47,7 @@ func newStatusCommand(root *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			shellEnv, err := workspace.BuildShellEnvironment(target.Root, result.Home, result.Aliases, workspace.ShellBuildOptions{Out: cmd.ErrOrStderr()})
+			shellEnv, err := workspace.BuildShellEnvironment(target.Root, result.Home, result.Aliases, workspace.ShellBuildOptions{Out: cmd.ErrOrStderr(), GlobalHome: globalHome})
 			if err != nil {
 				return err
 			}
@@ -55,7 +55,11 @@ func newStatusCommand(root *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			renderWorkspaceStatus(cmd.OutOrStdout(), target, result.Home, shellEnv, providers, verbose, short)
+			tools, err := inspectToolInventory(result.Home, providers)
+			if err != nil {
+				return err
+			}
+			renderWorkspaceStatus(cmd.OutOrStdout(), target, result.Home, shellEnv, providers, tools, verbose, short)
 			return nil
 		},
 	}
@@ -64,7 +68,7 @@ func newStatusCommand(root *rootOptions) *cobra.Command {
 	return cmd
 }
 
-func renderWorkspaceStatus(w io.Writer, target *workspaceTarget, home string, shellEnv workspace.ShellEnvironment, providers []providerInventory, verbose, short bool) {
+func renderWorkspaceStatus(w io.Writer, target *workspaceTarget, home string, shellEnv workspace.ShellEnvironment, providers []providerInventory, tools []toolInventory, verbose, short bool) {
 	workspaceName := target.DisplayName()
 	if workspaceName == "" {
 		workspaceName = filepath.Base(target.Root)
@@ -81,6 +85,9 @@ func renderWorkspaceStatus(w io.Writer, target *workspaceTarget, home string, sh
 	writeLine(w, "")
 	writeLine(w, "providers:")
 	renderStatusProviders(w, providers, false)
+	writeLine(w, "")
+	writeLine(w, "tools:")
+	renderToolTable(w, tools)
 	if !verbose {
 		return
 	}
@@ -112,6 +119,9 @@ func renderDefaultStatus(w io.Writer, scope inventoryScope, verbose, short bool)
 	writeLine(w, "")
 	writeLine(w, "providers:")
 	renderStatusProviders(w, scope.Providers, false)
+	writeLine(w, "")
+	writeLine(w, "tools:")
+	renderToolTable(w, scope.Tools)
 	if !verbose {
 		return
 	}

@@ -2,15 +2,16 @@
 title: tinx workspace
 ---
 
-`tinx workspace` manages workspace selection and inventory. The top-level `tinx use` shortcut shares the same execution path as `tinx workspace use`.
+`tinx workspace` manages workspace selection, registration, and discovery. The top-level `tinx use` shortcut shares the same execution path as `tinx workspace use`.
 
 ## Typical workflow
 
 ```bash
 tinx init demo
+tinx add core/node as node
 tinx workspace list
 tinx workspace current
-tinx workspace use demo
+tinx workspace use demo -- node --version
 tinx workspace delete demo
 ```
 
@@ -21,6 +22,8 @@ tinx workspace use demo
 tinx workspace use ./demo
 tinx --workspace demo -- node build
 ```
+
+`tinx --`, `tinx exec`, and `tinx shell` all resolve the target workspace the same way: explicit flag first, discovery second, active workspace record third.
 
 ## Main command help
 
@@ -73,7 +76,7 @@ Examples:
 ```bash
 tinx workspace use demo
 tinx workspace use demo -- node build
-tinx use demo -- lite-ci plan
+tinx use demo -- kubectl version --client
 ```
 
 ## `workspace list`

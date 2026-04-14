@@ -64,6 +64,128 @@ func TestInitWorkspaceFromFlagsAutoSelectsWorkspaceAndDispatches(t *testing.T) {
 	}
 }
 
+func TestWorkspaceSupportsNormalizedMultiToolProvider(t *testing.T) {
+	tempDir := t.TempDir()
+	globalHome := filepath.Join(tempDir, ".tinx-global")
+	providerDir := filepath.Join(tempDir, "normalized-provider")
+	if err := copyTree(filepath.Join("..", "..", "testdata", "multi-tool-provider"), providerDir); err != nil {
+		t.Fatalf("copy normalized provider: %v", err)
+	}
+	layoutPath := releaseProviderLayout(t, globalHome, providerDir)
+	workspaceRoot := filepath.Join(tempDir, "normalized-workspace")
+
+	runRootCommand(t, []string{"--tinx-home", globalHome, "init", workspaceRoot})
+	runRootCommand(t, []string{"--tinx-home", globalHome, "add", layoutPath, "as", "echo"})
+
+	workspaceHome := workspacepkg.Home(workspaceRoot)
+	aliases, err := state.LoadAliases(workspaceHome)
+	if err != nil {
+		t.Fatalf("load workspace aliases: %v", err)
+	}
+	meta, err := state.LoadProviderMetadataByKey(workspaceHome, aliases["echo"])
+	if err != nil {
+		t.Fatalf("load provider metadata: %v", err)
+	}
+	scriptToolPath := filepath.Join(state.MetadataStoreRoot(meta), "tools", "echo-tool", "bin", "echo-tool")
+	setupToolPath := filepath.Join(state.MetadataStoreRoot(meta), "bin", goruntime.GOOS, goruntime.GOARCH, "setup-echo")
+	if _, err := os.Stat(scriptToolPath); !os.IsNotExist(err) {
+		t.Fatalf("expected script tool to be lazy-installed, stat=%v", err)
+	}
+	if _, err := os.Stat(setupToolPath); !os.IsNotExist(err) {
+		t.Fatalf("expected setup tool to be lazy-installed, stat=%v", err)
+	}
+	aliasBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "exec", "echo", "one", "two"})
+	if !strings.Contains(aliasBuf.String(), "normalized-env=hello-normalized") {
+		t.Fatalf("unexpected alias output: %s", aliasBuf.String())
+	}
+	if !strings.Contains(aliasBuf.String(), "normalized-args=one two") {
+		t.Fatalf("unexpected alias args output: %s", aliasBuf.String())
+	}
+	for _, shimName := range []string{"echo", "echo-tool"} {
+		if _, err := os.Stat(filepath.Join(workspaceRoot, ".workspace", "bin", shimName)); err != nil {
+			t.Fatalf("expected shim %s: %v", shimName, err)
+		}
+	}
+	toolBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "exec", "echo-tool", "alpha", "beta"})
+	if !strings.Contains(toolBuf.String(), "normalized-args=alpha beta") {
+		t.Fatalf("unexpected tool output: %s", toolBuf.String())
+	}
+	if _, err := os.Stat(scriptToolPath); err != nil {
+		t.Fatalf("expected lazy-installed script tool %s: %v", scriptToolPath, err)
+	}
+	if _, err := os.Stat(setupToolPath); err != nil {
+		t.Fatalf("expected materialized setup tool %s: %v", setupToolPath, err)
+	}
+	if strings.Contains(aliasBuf.String(), "install no longer executes commands") {
+		t.Fatalf("unexpected legacy execution path: %s", aliasBuf.String())
+	}
+}
+
+func TestWorkspaceSupportsInlineNormalizedProvider(t *testing.T) {
+	tempDir := t.TempDir()
+	globalHome := filepath.Join(tempDir, ".tinx-global")
+	providerDir := filepath.Join(tempDir, "inline-provider")
+	if err := copyTree(filepath.Join("..", "..", "testdata", "inline-tool-provider"), providerDir); err != nil {
+		t.Fatalf("copy inline provider: %v", err)
+	}
+	layoutPath := releaseProviderLayout(t, globalHome, providerDir)
+	workspaceRoot := filepath.Join(tempDir, "inline-workspace")
+
+	runRootCommand(t, []string{"--tinx-home", globalHome, "init", workspaceRoot})
+	runRootCommand(t, []string{"--tinx-home", globalHome, "add", layoutPath, "as", "inline"})
+
+	workspaceHome := workspacepkg.Home(workspaceRoot)
+	aliases, err := state.LoadAliases(workspaceHome)
+	if err != nil {
+		t.Fatalf("load workspace aliases: %v", err)
+	}
+	meta, err := state.LoadProviderMetadataByKey(workspaceHome, aliases["inline"])
+	if err != nil {
+		t.Fatalf("load provider metadata: %v", err)
+	}
+	scriptToolPath := filepath.Join(state.MetadataStoreRoot(meta), "tools", "inline-tool", "bin", "inline-tool")
+	setupToolPath := filepath.Join(state.MetadataStoreRoot(meta), "bin", goruntime.GOOS, goruntime.GOARCH, "setup-inline")
+	assetPath := filepath.Join(state.MetadataStoreRoot(meta), "assets", "templates", "message.txt")
+	for _, path := range []string{scriptToolPath, setupToolPath, assetPath} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("expected %s to be lazy, stat=%v", path, err)
+		}
+	}
+
+	aliasBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "exec", "inline", "red", "blue"})
+	for _, expected := range []string{
+		"inline-env=hello-inline",
+		"inline-mode=inline",
+		"inline-asset=hello-from-inline-assets",
+		"inline-args=red blue",
+	} {
+		if !strings.Contains(aliasBuf.String(), expected) {
+			t.Fatalf("expected %q in alias output, got: %s", expected, aliasBuf.String())
+		}
+	}
+	for _, shimName := range []string{"inline", "inline-tool"} {
+		if _, err := os.Stat(filepath.Join(workspaceRoot, ".workspace", "bin", shimName)); err != nil {
+			t.Fatalf("expected shim %s: %v", shimName, err)
+		}
+	}
+	toolBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "exec", "inline-tool", "green", "gold"})
+	if !strings.Contains(toolBuf.String(), "inline-args=green gold") {
+		t.Fatalf("unexpected inline tool output: %s", toolBuf.String())
+	}
+	for _, path := range []string{scriptToolPath, setupToolPath, assetPath} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("expected materialized path %s: %v", path, err)
+		}
+	}
+	assetBytes, err := os.ReadFile(assetPath)
+	if err != nil {
+		t.Fatalf("read inline asset: %v", err)
+	}
+	if strings.TrimSpace(string(assetBytes)) != "hello-from-inline-assets" {
+		t.Fatalf("unexpected inline asset content: %q", string(assetBytes))
+	}
+}
+
 func TestInitDefaultsToCurrentDirectory(t *testing.T) {
 	tempDir := t.TempDir()
 	globalHome := filepath.Join(tempDir, ".tinx-global")
@@ -170,6 +292,89 @@ func TestInteractiveWorkspaceShellUsesWorkspaceEnvironment(t *testing.T) {
 	}
 }
 
+func TestDashShortcutUsesContextWhenSyncingRemoteProviders(t *testing.T) {
+	tempDir := t.TempDir()
+	globalHome := filepath.Join(tempDir, ".tinx-global")
+	liteCIProject := createLiteCIProviderProject(t, filepath.Join(tempDir, "lite-ci-provider"))
+	server := httptest.NewServer(gcrregistry.New())
+	defer server.Close()
+	registryHost := strings.TrimPrefix(server.URL, "http://")
+	ref := registryHost + "/acme/lite-ci:v0.1.0"
+	releaseProviderRef(t, globalHome, liteCIProject, ref)
+
+	workspaceRoot := filepath.Join(tempDir, "dash-workspace")
+	if err := os.MkdirAll(workspaceRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := workspacepkg.Save(filepath.Join(workspaceRoot, "tinx.yaml"), workspacepkg.Config{
+		APIVersion: workspacepkg.APIVersionV1,
+		Kind:       workspacepkg.KindWorkspace,
+		Workspace:  "dash-workspace",
+		Metadata:   workspacepkg.Metadata{Name: "dash-workspace"},
+		Providers: map[string]workspacepkg.Provider{
+			"lite-ci": {Source: ref, PlainHTTP: true},
+		},
+	}); err != nil {
+		t.Fatalf("save workspace manifest: %v", err)
+	}
+	if err := state.SaveActiveWorkspace(globalHome, workspaceRoot); err != nil {
+		t.Fatalf("save active workspace: %v", err)
+	}
+
+	fakeShell := filepath.Join(tempDir, "fake-shell")
+	script := "#!/bin/sh\nset -eu\nprintf 'shell-root=%s\\n' \"$TINX_WORKSPACE_ROOT\"\nprintf 'shell-env-file=%s\\n' \"$TINX_WORKSPACE_ENV_FILE\"\nprintf 'shell-path=%s\\n' \"$PATH\"\n"
+	if err := os.WriteFile(fakeShell, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SHELL", fakeShell)
+
+	shellBuf := new(bytes.Buffer)
+	if err := executeCLI(context.Background(), []string{"--tinx-home", globalHome, "--"}, shellBuf, shellBuf); err != nil {
+		t.Fatalf("dash shortcut failed: %v\n%s", err, shellBuf.String())
+	}
+	if !bytes.Contains(shellBuf.Bytes(), []byte("shell-root="+workspaceRoot)) {
+		t.Fatalf("expected dash shortcut shell to inherit workspace root, got: %s", shellBuf.String())
+	}
+	if !bytes.Contains(shellBuf.Bytes(), []byte(filepath.Join(workspaceRoot, ".workspace", "bin"))) {
+		t.Fatalf("expected dash shortcut shell path to include workspace shims, got: %s", shellBuf.String())
+	}
+}
+
+func TestDashShortcutReusesCachedTaggedRegistryProvider(t *testing.T) {
+	tempDir := t.TempDir()
+	globalHome := filepath.Join(tempDir, ".tinx-global")
+	liteCIProject := createLiteCIProviderProject(t, filepath.Join(tempDir, "lite-ci-provider"))
+	server := httptest.NewServer(gcrregistry.New())
+	registryHost := strings.TrimPrefix(server.URL, "http://")
+	ref := registryHost + "/acme/lite-ci:0.1.1"
+	releaseProviderRef(t, globalHome, liteCIProject, ref)
+
+	workspaceRoot := filepath.Join(tempDir, "cached-tagged-workspace")
+	runRootCommand(t, []string{"--tinx-home", globalHome, "init", workspaceRoot})
+	runRootCommand(t, []string{"--tinx-home", globalHome, "add", ref, "as", "lite-ci", "--plain-http"})
+
+	lock, err := workspacepkg.LoadLock(workspaceRoot)
+	if err != nil {
+		t.Fatalf("load workspace lock: %v", err)
+	}
+	if len(lock.Providers) != 1 {
+		t.Fatalf("expected one locked provider, got %#v", lock.Providers)
+	}
+	if !strings.HasPrefix(lock.Providers[0].Resolved, registryHost+"/acme/lite-ci@sha256:") {
+		t.Fatalf("expected tagged provider to be pinned in the lockfile, got %q", lock.Providers[0].Resolved)
+	}
+
+	server.Close()
+
+	runBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "--workspace", workspaceRoot, "--", "lite-ci", "plan"})
+	if !strings.Contains(runBuf.String(), "lite-ci-env=acme/lite-ci") {
+		t.Fatalf("expected cached provider output, got: %s", runBuf.String())
+	}
+	if !strings.Contains(runBuf.String(), "lite-ci-args=plan") {
+		t.Fatalf("expected cached command args, got: %s", runBuf.String())
+	}
+}
+
 func TestProviderCommandAliasesAndStatus(t *testing.T) {
 	tempDir := t.TempDir()
 	globalHome := filepath.Join(tempDir, ".tinx-global")
@@ -186,6 +391,7 @@ func TestProviderCommandAliasesAndStatus(t *testing.T) {
 		"path: " + displayRelativePath(workspaceRoot),
 		"shims: active",
 		"providers:",
+		"tools:",
 		"lite-ci",
 		"acme/lite-ci",
 		"v0.1.0",
@@ -239,6 +445,66 @@ func TestProviderCommandAliasesAndStatus(t *testing.T) {
 	providersListBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "p", "list"})
 	if !strings.Contains(providersListBuf.String(), "no providers installed") {
 		t.Fatalf("expected provider list to be empty after removal, got:\n%s", providersListBuf.String())
+	}
+}
+
+func TestStatusShowsToolInventoryForSetupProviderFlow(t *testing.T) {
+	tempDir := t.TempDir()
+	globalHome := filepath.Join(tempDir, ".tinx-global")
+	providerDir := filepath.Join(tempDir, "setup-kubectl-provider")
+	if err := copyTree(filepath.Join("..", "..", "testdata", "setup-kubectl"), providerDir); err != nil {
+		t.Fatalf("copy setup-kubectl provider: %v", err)
+	}
+	layoutPath := releaseProviderLayout(t, globalHome, providerDir)
+	workspaceRoot := filepath.Join(tempDir, "kubectl-workspace")
+
+	runRootCommand(t, []string{"--tinx-home", globalHome, "init", workspaceRoot})
+	runRootCommand(t, []string{"--tinx-home", globalHome, "add", layoutPath, "as", "setup-kubectl"})
+	server, version := newFakeKubectlReleaseServer(t)
+	defer server.Close()
+	t.Setenv("KUBECTL_RELEASE_BASE_URL", server.URL)
+	t.Setenv("KUBECTL_VERSION", "1.27")
+
+	beforeBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "--workspace", workspaceRoot, "status"})
+	beforeOutput := beforeBuf.String()
+	for _, expected := range []string{
+		"tinx workspace: kubectl-workspace",
+		"tools:",
+		"TOOL",
+		"COMMANDS",
+		"setup-kubectl",
+		"kubectl",
+		"~ lazy",
+	} {
+		if !strings.Contains(beforeOutput, expected) {
+			t.Fatalf("expected %q in pre-install status output, got:\n%s", expected, beforeOutput)
+		}
+	}
+
+	execBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "--workspace", workspaceRoot, "--", "kubectl", "version", "--client"})
+	for _, expected := range []string{
+		"kubectl-version=" + version,
+		"kubectl-args=version --client",
+	} {
+		if !strings.Contains(execBuf.String(), expected) {
+			t.Fatalf("expected %q in kubectl output, got:\n%s", expected, execBuf.String())
+		}
+	}
+
+	afterBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "--workspace", workspaceRoot, "status"})
+	afterOutput := afterBuf.String()
+	for _, expected := range []string{
+		"tools:",
+		"setup-kubectl",
+		"kubectl",
+		"✓ ready",
+	} {
+		if !strings.Contains(afterOutput, expected) {
+			t.Fatalf("expected %q in post-install status output, got:\n%s", expected, afterOutput)
+		}
+	}
+	if strings.Contains(afterOutput, "~ lazy") {
+		t.Fatalf("expected lazy status to be cleared after setup, got:\n%s", afterOutput)
 	}
 }
 

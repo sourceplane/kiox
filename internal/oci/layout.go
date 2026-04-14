@@ -19,9 +19,9 @@ import (
 
 	digest "github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"gopkg.in/yaml.v3"
 
-	"github.com/sourceplane/tinx/internal/manifest"
+	"github.com/sourceplane/tinx/internal/core"
+	"github.com/sourceplane/tinx/internal/parser"
 	"github.com/sourceplane/tinx/internal/state"
 	"github.com/sourceplane/tinx/internal/ui/progress"
 )
@@ -35,9 +35,13 @@ type imageIndex struct {
 }
 
 func Pack(opts PackOptions) (PackResult, error) {
-	provider, err := manifest.Load(opts.ManifestPath)
+	pkg, err := parser.Load(opts.ManifestPath)
 	if err != nil {
 		return PackResult{}, err
+	}
+	defaultTool, ok := pkg.DefaultTool()
+	if !ok {
+		return PackResult{}, fmt.Errorf("provider %s does not declare a default tool", pkg.ProviderRef())
 	}
 
 	artifactRoot := opts.ArtifactRoot
@@ -46,7 +50,7 @@ func Pack(opts PackOptions) (PackResult, error) {
 	}
 	tag := opts.Tag
 	if tag == "" {
-		tag = provider.Metadata.Version
+		tag = pkg.Provider.Metadata.Version
 	}
 
 	if err := os.RemoveAll(opts.OutputDir); err != nil {
@@ -61,31 +65,22 @@ func Pack(opts PackOptions) (PackResult, error) {
 		return PackResult{}, fmt.Errorf("read manifest file: %w", err)
 	}
 	configBytes, err := json.MarshalIndent(ProviderConfig{
-		APIVersion:  provider.APIVersion,
-		Kind:        provider.Kind,
-		Namespace:   provider.Metadata.Namespace,
-		Name:        provider.Metadata.Name,
-		Version:     provider.Metadata.Version,
-		Description: provider.Metadata.Description,
-		Homepage:    provider.Metadata.Homepage,
-		License:     provider.Metadata.License,
-		Runtime:     provider.Spec.Runtime,
-		Entrypoint:  provider.Spec.Entrypoint,
+		APIVersion:  pkg.APIVersion,
+		Kind:        core.KindProvider,
+		Namespace:   pkg.Provider.Metadata.Namespace,
+		Name:        pkg.Provider.Metadata.Name,
+		Version:     pkg.Provider.Metadata.Version,
+		Description: pkg.Provider.Metadata.Description,
+		Homepage:    pkg.Provider.Metadata.Homepage,
+		License:     pkg.Provider.Metadata.License,
+		Runtime:     defaultTool.Spec.Runtime.Type,
+		Entrypoint:  defaultTool.PrimaryProvide(),
+		DefaultTool: defaultTool.Metadata.Name,
 	}, "", "  ")
 	if err != nil {
 		return PackResult{}, fmt.Errorf("marshal config: %w", err)
 	}
-	metadataBytes, err := json.MarshalIndent(ProviderMetadata{
-		Namespace:              provider.Metadata.Namespace,
-		Name:                   provider.Metadata.Name,
-		Version:                provider.Metadata.Version,
-		Description:            provider.Metadata.Description,
-		Entrypoint:             provider.Spec.Entrypoint,
-		Runtime:                provider.Spec.Runtime,
-		Capabilities:           provider.CapabilityNames(),
-		CapabilityDescriptions: capabilityDescriptions(provider),
-		Platforms:              toMetadataPlatforms(provider.Spec.Platforms),
-	}, "", "  ")
+	metadataBytes, err := json.MarshalIndent(pkg, "", "  ")
 	if err != nil {
 		return PackResult{}, fmt.Errorf("marshal metadata: %w", err)
 	}
@@ -98,40 +93,35 @@ func Pack(opts PackOptions) (PackResult, error) {
 	if err != nil {
 		return PackResult{}, err
 	}
-	providerMetadataDesc, err := writeBlob(opts.OutputDir, metadataBytes, MediaTypeMetadata, map[string]string{"org.opencontainers.image.title": "metadata.json"})
+	providerMetadataDesc, err := writeBlob(opts.OutputDir, metadataBytes, MediaTypeMetadata, map[string]string{"org.opencontainers.image.title": "package.json"})
 	if err != nil {
 		return PackResult{}, err
 	}
 
 	layers := []ocispec.Descriptor{providerManifestDesc, providerMetadataDesc}
-	if assetsRoot := provider.AssetsRoot(); assetsRoot != "" {
-		assetsPath := filepath.Join(artifactRoot, filepath.FromSlash(assetsRoot))
-		if exists(assetsPath) {
-			assetsBytes, err := tarDirectory(artifactRoot, filepath.FromSlash(assetsRoot))
-			if err != nil {
-				return PackResult{}, fmt.Errorf("archive assets: %w", err)
-			}
-			assetsDesc, err := writeBlob(opts.OutputDir, assetsBytes, MediaTypeAssets, map[string]string{"org.opencontainers.image.title": assetsRoot})
+	bundleNames := make([]string, 0, len(pkg.Bundles))
+	for name := range pkg.Bundles {
+		bundleNames = append(bundleNames, name)
+	}
+	sort.Strings(bundleNames)
+	for _, bundleName := range bundleNames {
+		bundle := pkg.Bundles[bundleName]
+		for _, layer := range bundle.Spec.Layers {
+			layerData, err := readBundleLayerData(artifactRoot, layer)
 			if err != nil {
 				return PackResult{}, err
 			}
-			layers = append(layers, assetsDesc)
+			desc, err := writeBlob(opts.OutputDir, layerData, bundleLayerMediaType(layer), map[string]string{
+				"org.opencontainers.image.title": layer.Source,
+				"io.tinx.bundle":                 bundleName,
+				"io.tinx.platform":               layer.Platform.OS + "/" + layer.Platform.Arch,
+				"io.tinx.source":                 layer.Source,
+			})
+			if err != nil {
+				return PackResult{}, err
+			}
+			layers = append(layers, desc)
 		}
-	}
-	for _, platform := range provider.Spec.Platforms {
-		binaryPath := filepath.Join(artifactRoot, filepath.FromSlash(platform.Binary))
-		binaryBytes, err := os.ReadFile(binaryPath)
-		if err != nil {
-			return PackResult{}, fmt.Errorf("read platform binary %s/%s: %w", platform.OS, platform.Arch, err)
-		}
-		desc, err := writeBlob(opts.OutputDir, binaryBytes, BinaryMediaType(platform.OS, platform.Arch), map[string]string{
-			"org.opencontainers.image.title": platform.Binary,
-			"io.tinx.platform":               platform.OS + "/" + platform.Arch,
-		})
-		if err != nil {
-			return PackResult{}, err
-		}
-		layers = append(layers, desc)
 	}
 
 	imageManifestBytes, err := json.MarshalIndent(ImageManifest{
@@ -141,8 +131,8 @@ func Pack(opts PackOptions) (PackResult, error) {
 		Config:        configDesc,
 		Layers:        layers,
 		Annotations: map[string]string{
-			"org.opencontainers.image.title":   provider.Ref(),
-			"org.opencontainers.image.version": provider.Metadata.Version,
+			"org.opencontainers.image.title":   pkg.ProviderRef(),
+			"org.opencontainers.image.version": pkg.Provider.Metadata.Version,
 		},
 	}, "", "  ")
 	if err != nil {
@@ -168,7 +158,7 @@ func Pack(opts PackOptions) (PackResult, error) {
 		return PackResult{}, fmt.Errorf("write oci-layout: %w", err)
 	}
 
-	return PackResult{ProviderRef: provider.Ref(), Version: provider.Metadata.Version, Tag: tag, LayoutDir: opts.OutputDir}, nil
+	return PackResult{ProviderRef: pkg.ProviderRef(), Version: pkg.Provider.Metadata.Version, Tag: tag, LayoutDir: opts.OutputDir}, nil
 }
 
 func BinaryMediaType(goos, goarch string) string {
@@ -183,11 +173,15 @@ func InstallMetadata(layoutPath, tag, activationHome, storeHome, alias string, o
 }
 
 func installMetadata(layoutPath, tag, activationHome, storeHome, alias, ref string, plainHTTP bool, tracker *progress.Tracker) (state.ProviderMetadata, error) {
-	_, _, config, metadata, manifestBytes, metadataBytes, err := readLayout(layoutPath, tag)
+	pkg, _, config, manifestBytes, metadataBytes, err := readLayout(layoutPath, tag)
 	if err != nil {
 		return state.ProviderMetadata{}, err
 	}
 	tracker.Done("lookup", fmt.Sprintf("resolved %s/%s@%s", config.Namespace, config.Name, config.Version))
+	defaultTool, ok := pkg.DefaultTool()
+	if !ok {
+		return state.ProviderMetadata{}, fmt.Errorf("provider %s/%s@%s has no default tool", config.Namespace, config.Name, config.Version)
+	}
 
 	manifestDescriptor, err := resolveManifest(layoutPath, tag)
 	if err != nil {
@@ -207,7 +201,7 @@ func installMetadata(layoutPath, tag, activationHome, storeHome, alias, ref stri
 	if err := os.WriteFile(filepath.Join(storeRoot, "tinx.yaml"), manifestBytes, 0o644); err != nil {
 		return state.ProviderMetadata{}, fmt.Errorf("cache manifest: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(storeRoot, "provider-metadata.json"), metadataBytes, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(storeRoot, "package.json"), metadataBytes, 0o644); err != nil {
 		return state.ProviderMetadata{}, fmt.Errorf("cache provider metadata: %w", err)
 	}
 
@@ -220,11 +214,11 @@ func installMetadata(layoutPath, tag, activationHome, storeHome, alias, ref stri
 		Description:            config.Description,
 		Homepage:               config.Homepage,
 		License:                config.License,
-		Runtime:                config.Runtime,
-		Entrypoint:             config.Entrypoint,
-		Capabilities:           append([]string(nil), metadata.Capabilities...),
-		CapabilityDescriptions: copyCapabilityDescriptions(metadata.CapabilityDescriptions),
-		Platforms:              toStatePlatforms(metadata.Platforms),
+		Runtime:                defaultTool.Spec.Runtime.Type,
+		Entrypoint:             defaultTool.PrimaryProvide(),
+		Capabilities:           defaultTool.CapabilityNames(),
+		CapabilityDescriptions: capabilityDescriptions(defaultTool),
+		Platforms:              toStatePlatforms(pkg.PlatformSummaries()),
 		Source:                 state.Source{LayoutPath: storeLayoutPath, Tag: tag, Ref: resolvedSourceRef(ref, manifestDescriptor.Digest.String()), PlainHTTP: plainHTTP},
 		InstalledAt:            time.Now().UTC(),
 	}
@@ -251,14 +245,44 @@ func installMetadata(layoutPath, tag, activationHome, storeHome, alias, ref stri
 }
 
 func MaterializeRuntime(meta state.ProviderMetadata, goos, goarch string, out io.Writer) (string, error) {
-	tracker := progress.New(out)
-	defer tracker.Finish()
-	return materializeRuntime(meta, goos, goarch, true, tracker)
+	pkg, err := LoadPackageModel(meta)
+	if err != nil {
+		return "", err
+	}
+	tool, ok := pkg.DefaultTool()
+	if !ok {
+		return "", fmt.Errorf("provider %s/%s@%s does not declare a default tool", meta.Namespace, meta.Name, meta.Version)
+	}
+	return MaterializeTool(meta, pkg, tool, goos, goarch, out)
 }
 
-func materializeRuntime(meta state.ProviderMetadata, goos, goarch string, allowRemoteHydrate bool, tracker *progress.Tracker) (string, error) {
-	tracker.Step("runtime", fmt.Sprintf("resolving %s/%s for %s/%s", meta.Namespace, meta.Name, goos, goarch))
-	provider, view, _, _, _, _, err := readLayout(meta.Source.LayoutPath, meta.Source.Tag)
+func MaterializeTool(meta state.ProviderMetadata, pkg core.Package, tool core.Tool, goos, goarch string, out io.Writer) (string, error) {
+	tracker := progress.New(out)
+	defer tracker.Finish()
+	return materializeTool(meta, pkg, tool, goos, goarch, true, tracker)
+}
+
+func ExpectedToolPath(meta state.ProviderMetadata, pkg core.Package, tool core.Tool, goos, goarch string) (string, error) {
+	bundleName := strings.TrimSpace(tool.Spec.Source.Ref)
+	bundle, ok := pkg.Bundles[bundleName]
+	if !ok {
+		return "", fmt.Errorf("source bundle %q not found", bundleName)
+	}
+	for _, layer := range bundle.Spec.Layers {
+		if isArchiveMediaType(bundleLayerMediaType(layer)) {
+			continue
+		}
+		if !platformMatches(layer.Platform, goos, goarch) {
+			continue
+		}
+		return filepath.Join(state.MetadataStoreRoot(meta), filepath.FromSlash(layer.Source)), nil
+	}
+	return "", fmt.Errorf("tool %s does not publish %s/%s", tool.Metadata.Name, goos, goarch)
+}
+
+func materializeTool(meta state.ProviderMetadata, pkg core.Package, tool core.Tool, goos, goarch string, allowRemoteHydrate bool, tracker *progress.Tracker) (string, error) {
+	tracker.Step("runtime", fmt.Sprintf("resolving %s/%s tool %s for %s/%s", meta.Namespace, meta.Name, tool.Metadata.Name, goos, goarch))
+	_, view, _, _, _, err := readLayout(meta.Source.LayoutPath, meta.Source.Tag)
 	if err != nil {
 		return "", err
 	}
@@ -269,42 +293,28 @@ func materializeRuntime(meta state.ProviderMetadata, goos, goarch string, allowR
 	if err := os.MkdirAll(storeRoot, 0o755); err != nil {
 		return "", fmt.Errorf("create provider store root: %w", err)
 	}
-	if view.AssetsDescriptor != nil {
-		tracker.Info("runtime", "extracting cached assets")
-		if err := extractTarBlob(meta.Source.LayoutPath, *view.AssetsDescriptor, storeRoot); err != nil {
-			if allowRemoteHydrate && meta.Source.Ref != "" {
-				tracker.Info("hydrate", "cached assets incomplete, hydrating from remote")
-				if hydrateErr := hydrateStoreFromRemote(context.Background(), meta.Source.LayoutPath, meta.Source.Ref, meta.Source.PlainHTTP); hydrateErr != nil {
-					return "", err
-				}
-				return materializeRuntime(meta, goos, goarch, false, tracker)
-			}
-			return "", err
-		}
+	if err := extractBundleAssets(meta, view, storeRoot, allowRemoteHydrate, tracker); err != nil {
+		return "", err
 	}
-	platform, ok := provider.Platform(goos, goarch)
+	bundleLayer, descriptor, ok := selectBundleLayer(pkg, view, tool, goos, goarch)
 	if !ok {
-		return "", fmt.Errorf("provider %s does not publish %s/%s", provider.Ref(), goos, goarch)
+		return "", fmt.Errorf("tool %s does not publish %s/%s", tool.Metadata.Name, goos, goarch)
 	}
-	binaryDesc, ok := view.BinaryDescriptors[goos+"/"+goarch]
-	if !ok {
-		return "", fmt.Errorf("binary layer missing for %s/%s", goos, goarch)
-	}
-	binaryPath := filepath.Join(storeRoot, filepath.FromSlash(platform.Binary))
+	binaryPath := filepath.Join(storeRoot, filepath.FromSlash(bundleLayer.Source))
 	binaryName := filepath.Base(binaryPath)
 	if exists(binaryPath) {
 		tracker.Cached("runtime", fmt.Sprintf("cached %s", binaryName))
 		return binaryPath, nil
 	}
 	tracker.Info("runtime", "extracting provider binary from cache")
-	blob, err := readBlob(meta.Source.LayoutPath, binaryDesc)
+	blob, err := readBlob(meta.Source.LayoutPath, descriptor)
 	if err != nil {
 		if allowRemoteHydrate && meta.Source.Ref != "" {
 			tracker.Info("hydrate", "binary blob missing, hydrating from remote")
 			if hydrateErr := hydrateStoreFromRemote(context.Background(), meta.Source.LayoutPath, meta.Source.Ref, meta.Source.PlainHTTP); hydrateErr != nil {
 				return "", err
 			}
-			return materializeRuntime(meta, goos, goarch, false, tracker)
+			return materializeTool(meta, pkg, tool, goos, goarch, false, tracker)
 		}
 		return "", err
 	}
@@ -318,12 +328,12 @@ func materializeRuntime(meta state.ProviderMetadata, goos, goarch string, allowR
 	return binaryPath, nil
 }
 
-func capabilityDescriptions(provider manifest.Provider) map[string]string {
-	if len(provider.Spec.Capabilities) == 0 {
+func capabilityDescriptions(tool core.Tool) map[string]string {
+	if len(tool.Spec.Capabilities) == 0 {
 		return nil
 	}
-	descriptions := make(map[string]string, len(provider.Spec.Capabilities))
-	for name, capability := range provider.Spec.Capabilities {
+	descriptions := make(map[string]string, len(tool.Spec.Capabilities))
+	for name, capability := range tool.Spec.Capabilities {
 		descriptions[name] = capability.Description
 	}
 	return descriptions
@@ -362,68 +372,72 @@ func resolvedSourceRef(ref, manifestDigest string) string {
 	return repository + "@" + strings.TrimSpace(manifestDigest)
 }
 
-func readLayout(layoutPath, tag string) (manifest.Provider, ProviderManifestView, ProviderConfig, ProviderMetadata, []byte, []byte, error) {
-	var provider manifest.Provider
+func readLayout(layoutPath, tag string) (core.Package, ProviderManifestView, ProviderConfig, []byte, []byte, error) {
+	var pkg core.Package
 	var view ProviderManifestView
 	var config ProviderConfig
-	var metadata ProviderMetadata
 	var manifestBytes []byte
 	var metadataBytes []byte
 
 	manifestDescriptor, err := resolveManifest(layoutPath, tag)
 	if err != nil {
-		return provider, view, config, metadata, nil, nil, err
+		return pkg, view, config, nil, nil, err
 	}
 	manifestDoc, err := readBlob(layoutPath, manifestDescriptor)
 	if err != nil {
-		return provider, view, config, metadata, nil, nil, err
+		return pkg, view, config, nil, nil, err
 	}
 	var imageManifest ImageManifest
 	if err := json.Unmarshal(manifestDoc, &imageManifest); err != nil {
-		return provider, view, config, metadata, nil, nil, fmt.Errorf("decode image manifest: %w", err)
+		return pkg, view, config, nil, nil, fmt.Errorf("decode image manifest: %w", err)
 	}
 	configBlob, err := readBlob(layoutPath, imageManifest.Config)
 	if err != nil {
-		return provider, view, config, metadata, nil, nil, err
+		return pkg, view, config, nil, nil, err
 	}
 	if err := json.Unmarshal(configBlob, &config); err != nil {
-		return provider, view, config, metadata, nil, nil, fmt.Errorf("decode config blob: %w", err)
+		return pkg, view, config, nil, nil, fmt.Errorf("decode config blob: %w", err)
 	}
 
-	view = ProviderManifestView{ConfigDescriptor: imageManifest.Config, ManifestDescriptor: manifestDescriptor, BinaryDescriptors: map[string]ocispec.Descriptor{}}
+	view = ProviderManifestView{ConfigDescriptor: imageManifest.Config, ManifestDescriptor: manifestDescriptor, BundleLayers: make([]BundleLayerDescriptor, 0, len(imageManifest.Layers))}
 	for _, layer := range imageManifest.Layers {
 		switch layer.MediaType {
 		case MediaTypeManifest:
 			view.ManifestDescriptor = layer
 			manifestBytes, err = readBlob(layoutPath, layer)
 			if err != nil {
-				return provider, view, config, metadata, nil, nil, err
-			}
-			if err := yaml.Unmarshal(manifestBytes, &provider); err != nil {
-				return provider, view, config, metadata, nil, nil, fmt.Errorf("decode tinx manifest layer: %w", err)
-			}
-			if err := provider.Normalize(); err != nil {
-				return provider, view, config, metadata, nil, nil, err
+				return pkg, view, config, nil, nil, err
 			}
 		case MediaTypeMetadata:
 			view.MetadataDescriptor = layer
 			metadataBytes, err = readBlob(layoutPath, layer)
 			if err != nil {
-				return provider, view, config, metadata, nil, nil, err
+				return pkg, view, config, nil, nil, err
 			}
-			if err := json.Unmarshal(metadataBytes, &metadata); err != nil {
-				return provider, view, config, metadata, nil, nil, fmt.Errorf("decode provider metadata layer: %w", err)
+			if err := json.Unmarshal(metadataBytes, &pkg); err != nil {
+				pkg = core.Package{}
 			}
-		case MediaTypeAssets:
-			layerCopy := layer
-			view.AssetsDescriptor = &layerCopy
 		default:
-			if platformKey, ok := layer.Annotations["io.tinx.platform"]; ok {
-				view.BinaryDescriptors[platformKey] = layer
-			}
+			view.BundleLayers = append(view.BundleLayers, descriptorFromLayer(layer))
 		}
 	}
-	return provider, view, config, metadata, manifestBytes, metadataBytes, nil
+	if pkg.Provider.Metadata.Name == "" {
+		if len(manifestBytes) == 0 {
+			return pkg, view, config, nil, nil, fmt.Errorf("provider manifest layer is missing")
+		}
+		pkg, err = parser.LoadBytes(manifestBytes)
+		if err != nil {
+			return pkg, view, config, nil, nil, err
+		}
+	}
+	if len(metadataBytes) == 0 {
+		metadataBytes, err = json.MarshalIndent(pkg, "", "  ")
+		if err != nil {
+			return pkg, view, config, nil, nil, fmt.Errorf("marshal normalized package: %w", err)
+		}
+	}
+	view.BundleLayers = enrichBundleDescriptors(pkg, view.BundleLayers)
+	return pkg, view, config, manifestBytes, metadataBytes, nil
 }
 
 func resolveManifest(layoutPath, tag string) (ocispec.Descriptor, error) {
@@ -608,19 +622,214 @@ func copyDirectory(srcDir, dstDir string) error {
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return err
 		}
+		if existing, err := os.ReadFile(target); err == nil {
+			if bytes.Equal(existing, data) {
+				return nil
+			}
+			if err := os.Remove(target); err != nil {
+				return err
+			}
+		} else if err != nil && !os.IsNotExist(err) {
+			return err
+		}
 		return os.WriteFile(target, data, info.Mode())
 	})
 }
 
-func toMetadataPlatforms(platforms []manifest.Platform) []ProviderPlatform {
-	out := make([]ProviderPlatform, 0, len(platforms))
-	for _, platform := range platforms {
-		out = append(out, ProviderPlatform{OS: platform.OS, Arch: platform.Arch, Binary: platform.Binary})
+func descriptorFromLayer(layer ocispec.Descriptor) BundleLayerDescriptor {
+	platform := core.PlatformSpec{}
+	if raw := strings.TrimSpace(layer.Annotations["io.tinx.platform"]); raw != "" {
+		parts := strings.SplitN(raw, "/", 2)
+		if len(parts) == 2 {
+			platform.OS = strings.TrimSpace(parts[0])
+			platform.Arch = strings.TrimSpace(parts[1])
+		}
 	}
-	return out
+	return BundleLayerDescriptor{
+		Bundle:     strings.TrimSpace(layer.Annotations["io.tinx.bundle"]),
+		Platform:   platform,
+		Source:     strings.TrimSpace(firstNonEmpty(layer.Annotations["io.tinx.source"], layer.Annotations["org.opencontainers.image.title"])),
+		MediaType:  layer.MediaType,
+		Descriptor: layer,
+	}
 }
 
-func toStatePlatforms(platforms []ProviderPlatform) []state.PlatformSummary {
+func enrichBundleDescriptors(pkg core.Package, descriptors []BundleLayerDescriptor) []BundleLayerDescriptor {
+	for index := range descriptors {
+		candidateBundle, candidateLayer, ok := matchBundleLayer(pkg, descriptors[index])
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(descriptors[index].Bundle) == "" {
+			descriptors[index].Bundle = candidateBundle
+		}
+		if strings.TrimSpace(descriptors[index].Source) == "" {
+			descriptors[index].Source = candidateLayer.Source
+		}
+		if strings.TrimSpace(descriptors[index].Platform.OS) == "" {
+			descriptors[index].Platform.OS = candidateLayer.Platform.OS
+		}
+		if strings.TrimSpace(descriptors[index].Platform.Arch) == "" {
+			descriptors[index].Platform.Arch = candidateLayer.Platform.Arch
+		}
+	}
+	return descriptors
+}
+
+func matchBundleLayer(pkg core.Package, descriptor BundleLayerDescriptor) (string, core.BundleLayer, bool) {
+	for bundleName, bundle := range pkg.Bundles {
+		for _, layer := range bundle.Spec.Layers {
+			if strings.TrimSpace(descriptor.Source) != "" && descriptor.Source != layer.Source {
+				continue
+			}
+			if strings.TrimSpace(descriptor.MediaType) != "" && bundleLayerMediaType(layer) != descriptor.MediaType {
+				continue
+			}
+			if strings.TrimSpace(descriptor.Platform.OS) != "" && descriptor.Platform.OS != layer.Platform.OS {
+				continue
+			}
+			if strings.TrimSpace(descriptor.Platform.Arch) != "" && descriptor.Platform.Arch != layer.Platform.Arch {
+				continue
+			}
+			return bundleName, layer, true
+		}
+	}
+	return "", core.BundleLayer{}, false
+}
+
+func readBundleLayerData(artifactRoot string, layer core.BundleLayer) ([]byte, error) {
+	relSource := filepath.FromSlash(strings.TrimSpace(layer.Source))
+	fullPath := filepath.Join(artifactRoot, relSource)
+	info, err := os.Stat(fullPath)
+	if err != nil {
+		return nil, fmt.Errorf("read bundle source %s: %w", layer.Source, err)
+	}
+	if info.IsDir() || isArchiveMediaType(bundleLayerMediaType(layer)) {
+		return tarDirectory(artifactRoot, relSource)
+	}
+	data, err := os.ReadFile(fullPath)
+	if err != nil {
+		return nil, fmt.Errorf("read bundle source %s: %w", layer.Source, err)
+	}
+	return data, nil
+}
+
+func bundleLayerMediaType(layer core.BundleLayer) string {
+	if mediaType := strings.TrimSpace(layer.MediaType); mediaType != "" {
+		if mediaType == "application/vnd.tinx.tool.binary" {
+			return BinaryMediaType(layer.Platform.OS, layer.Platform.Arch)
+		}
+		return mediaType
+	}
+	return BinaryMediaType(layer.Platform.OS, layer.Platform.Arch)
+}
+
+func selectBundleLayer(pkg core.Package, view ProviderManifestView, tool core.Tool, goos, goarch string) (core.BundleLayer, ocispec.Descriptor, bool) {
+	bundleName := strings.TrimSpace(tool.Spec.Source.Ref)
+	bundle, ok := pkg.Bundles[bundleName]
+	if !ok {
+		return core.BundleLayer{}, ocispec.Descriptor{}, false
+	}
+	for _, layer := range bundle.Spec.Layers {
+		if isArchiveMediaType(bundleLayerMediaType(layer)) {
+			continue
+		}
+		if !platformMatches(layer.Platform, goos, goarch) {
+			continue
+		}
+		descriptor, ok := lookupBundleDescriptor(view, bundleName, layer)
+		if ok {
+			return layer, descriptor, true
+		}
+	}
+	return core.BundleLayer{}, ocispec.Descriptor{}, false
+}
+
+func lookupBundleDescriptor(view ProviderManifestView, bundleName string, layer core.BundleLayer) (ocispec.Descriptor, bool) {
+	for _, candidate := range view.BundleLayers {
+		if strings.TrimSpace(candidate.Bundle) != "" && candidate.Bundle != bundleName {
+			continue
+		}
+		if strings.TrimSpace(candidate.Source) != "" && candidate.Source != layer.Source {
+			continue
+		}
+		if strings.TrimSpace(candidate.Platform.OS) != "" && candidate.Platform.OS != layer.Platform.OS {
+			continue
+		}
+		if strings.TrimSpace(candidate.Platform.Arch) != "" && candidate.Platform.Arch != layer.Platform.Arch {
+			continue
+		}
+		return candidate.Descriptor, true
+	}
+	return ocispec.Descriptor{}, false
+}
+
+func extractBundleAssets(meta state.ProviderMetadata, view ProviderManifestView, storeRoot string, allowRemoteHydrate bool, tracker *progress.Tracker) error {
+	for _, layer := range view.BundleLayers {
+		if !isArchiveMediaType(layer.MediaType) {
+			continue
+		}
+		if err := extractTarBlob(meta.Source.LayoutPath, layer.Descriptor, storeRoot); err != nil {
+			if allowRemoteHydrate && meta.Source.Ref != "" {
+				tracker.Info("hydrate", "cached asset layer missing, hydrating from remote")
+				if hydrateErr := hydrateStoreFromRemote(context.Background(), meta.Source.LayoutPath, meta.Source.Ref, meta.Source.PlainHTTP); hydrateErr != nil {
+					return err
+				}
+				return extractBundleAssets(meta, view, storeRoot, false, tracker)
+			}
+			return err
+		}
+	}
+	return nil
+}
+
+func LoadPackageModel(meta state.ProviderMetadata) (core.Package, error) {
+	var pkg core.Package
+	storeRoot := state.MetadataStoreRoot(meta)
+	if storeRoot == "" {
+		return pkg, fmt.Errorf("provider store is missing for %s/%s@%s", meta.Namespace, meta.Name, meta.Version)
+	}
+	packagePath := filepath.Join(storeRoot, "package.json")
+	if data, err := os.ReadFile(packagePath); err == nil {
+		if err := json.Unmarshal(data, &pkg); err == nil {
+			pkg.Normalize()
+			if validateErr := pkg.Validate(); validateErr == nil {
+				return pkg, nil
+			}
+		}
+	}
+	manifestBytes, err := os.ReadFile(filepath.Join(storeRoot, "tinx.yaml"))
+	if err != nil {
+		return pkg, fmt.Errorf("read cached provider manifest: %w", err)
+	}
+	pkg, err = parser.LoadBytes(manifestBytes)
+	if err != nil {
+		return pkg, err
+	}
+	return pkg, nil
+}
+
+func platformMatches(platform core.PlatformSpec, goos, goarch string) bool {
+	osMatch := platform.OS == goos || platform.OS == "any"
+	archMatch := platform.Arch == goarch || platform.Arch == "any"
+	return osMatch && archMatch
+}
+
+func isArchiveMediaType(mediaType string) bool {
+	trimmed := strings.TrimSpace(mediaType)
+	return strings.HasSuffix(trimmed, "+tar") || trimmed == MediaTypeAssets
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func toStatePlatforms(platforms []core.PlatformSummary) []state.PlatformSummary {
 	out := make([]state.PlatformSummary, 0, len(platforms))
 	for _, platform := range platforms {
 		out = append(out, state.PlatformSummary{OS: platform.OS, Arch: platform.Arch})

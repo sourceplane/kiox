@@ -2,7 +2,7 @@
 title: Multi-provider workspace
 ---
 
-One workspace can expose several providers on the same `PATH`. That is the default tinx model for multi-step workflows.
+One workspace can expose several provider packages on the same `PATH`. That is the default tinx model for multi-step workflows.
 
 ## Example manifest
 
@@ -18,7 +18,7 @@ providers:
   docker:
     source: tinx/docker
   kubectl:
-    source: tinx/kubectl
+    source: ghcr.io/acme/setup-kubectl:v1.31.0
 ```
 
 Initialize from the manifest:
@@ -27,26 +27,27 @@ Initialize from the manifest:
 tinx init ./tinx.yaml
 ```
 
-## Run providers side by side
+## Run commands side by side
 
 ```bash
-tinx -- node build
-tinx -- lite-ci plan
-tinx -- docker version
-tinx -- kubectl version --client
+tinx --workspace dev -- node build.js
+tinx --workspace dev -- lite-ci plan
+tinx --workspace dev -- docker version
+tinx --workspace dev -- kubectl version --client
 ```
 
-You can also pass one provider command line after another:
+If one process needs several tools at once, run that process inside the workspace shell:
 
 ```bash
-tinx -- lite-ci plan -- node build
+tinx --workspace dev -- sh -lc 'node --version && kubectl version --client'
 ```
 
 ## Inspect the workspace
 
 ```bash
-tinx status --verbose
-tinx provider list
+tinx --workspace dev ls
+tinx --workspace dev status --verbose
+tinx provider list dev
 tinx workspace current
 ```
 
@@ -57,4 +58,4 @@ tinx provider update node
 tinx provider update lite-ci kubectl
 ```
 
-This layout works well for build pipelines, developer shells, and platform workflows where one toolchain should be versioned as a unit.
+This layout works well for build pipelines, developer shells, and platform workflows where several toolchains should be versioned as one workspace.

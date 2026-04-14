@@ -220,7 +220,8 @@ func useWorkspace(cmd *cobra.Command, root *rootOptions, reference string, comma
 		return nil
 	}
 	shellEnv, err := workspace.BuildShellEnvironment(target.Root, result.Home, result.Aliases, workspace.ShellBuildOptions{
-		Out: cmd.ErrOrStderr(),
+		Out:        cmd.ErrOrStderr(),
+		GlobalHome: globalHome,
 	})
 	if err != nil {
 		return err

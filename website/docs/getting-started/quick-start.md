@@ -2,7 +2,7 @@
 title: Quick start
 ---
 
-This walkthrough uses the example provider shipped in `testdata/echo-provider`. It packages the provider as a local OCI layout, creates a workspace, and runs the provider through the workspace shell.
+This walkthrough uses the normalized multi-tool provider shipped in `testdata/multi-tool-provider`. It packages the provider as a local OCI layout, creates a workspace, and runs both the provider alias and a provided command through the workspace shell.
 
 ## 1. Build tinx
 
@@ -13,15 +13,18 @@ make build
 ## 2. Package the example provider
 
 ```bash
-make release-example
+./bin/tinx release \
+	--manifest testdata/multi-tool-provider/tinx.yaml \
+	--dist testdata/multi-tool-provider/dist \
+	--output testdata/multi-tool-provider/oci
 ```
 
-This writes a local OCI layout to `testdata/echo-provider/oci/`.
+This writes a local OCI layout to `testdata/multi-tool-provider/oci/`.
 
 ## 3. Create a workspace that uses the local layout
 
 ```bash
-./bin/tinx init demo -p testdata/echo-provider/oci as echo
+./bin/tinx init demo -p testdata/multi-tool-provider/oci as echo
 ```
 
 The command writes:
@@ -34,18 +37,28 @@ The command writes:
 
 ```bash
 ./bin/tinx --workspace demo status
+./bin/tinx --workspace demo ls
 ./bin/tinx workspace list
 ./bin/tinx workspace current
 ```
 
+You should see the workspace home, the installed provider, and the tool inventory. Before the first command runs, the tools still show as lazy.
+
 ## 5. Run the provider through the workspace environment
 
 ```bash
-./bin/tinx --workspace demo -- echo plan
-./bin/tinx --workspace demo exec echo plan
+./bin/tinx --workspace demo exec echo one two
+./bin/tinx --workspace demo exec echo-tool alpha beta
 ```
 
-The example provider prints the capability and arguments it receives. In a real provider, the alias behaves like any other command on `PATH`.
+The first command triggers lazy materialization of the bundled `setup-echo` tool and lazy installation of the script-backed `echo-tool`. In a real provider, both the alias and any provided commands behave like normal entries on `PATH`.
+
+Re-run the inventory commands to see the transition from lazy to ready:
+
+```bash
+./bin/tinx --workspace demo status
+./bin/tinx --workspace demo ls
+```
 
 ## 6. Start an interactive workspace shell
 
@@ -56,7 +69,8 @@ The example provider prints the capability and arguments it receives. In a real 
 Inside the shell, run the provider directly:
 
 ```bash
-echo plan
+echo three four
+echo-tool five six
 ```
 
 ## 7. Clean up
@@ -67,8 +81,8 @@ echo plan
 
 ## What happened
 
-1. `release-example` built multi-platform binaries and packed them into an OCI image layout.
+1. `tinx release` built the required bundle-backed binaries and packed them into an OCI image layout.
 2. `tinx init` created a workspace manifest and synced the provider into `.workspace/`.
-3. The workspace shell materialized the current platform binary, wrote provider shims, and prepended `.workspace/bin` to `PATH`.
+3. The workspace shell wrote lazy shims for `echo` and `echo-tool`, then the first execution materialized and installed the required tools on demand.
 
 Next, read [workspace](../concepts/workspace.md) and [runtime shell](../concepts/runtime-shell.md).

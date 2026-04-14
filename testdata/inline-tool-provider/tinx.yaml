@@ -1,0 +1,78 @@
+apiVersion: tinx.io/v1
+kind: Provider
+metadata:
+  namespace: acme
+  name: inline-tool-provider
+  version: v0.1.0
+  description: Inline normalized provider exercising bundles, assets, environments, and lazy installs
+spec:
+  bundles:
+    - name: setup-inline
+      layers:
+        - platform:
+            os: darwin
+            arch: amd64
+          mediaType: application/vnd.tinx.tool.binary
+          source: bin/darwin/amd64/setup-inline
+        - platform:
+            os: darwin
+            arch: arm64
+          mediaType: application/vnd.tinx.tool.binary
+          source: bin/darwin/arm64/setup-inline
+        - platform:
+            os: linux
+            arch: amd64
+          mediaType: application/vnd.tinx.tool.binary
+          source: bin/linux/amd64/setup-inline
+        - platform:
+            os: linux
+            arch: arm64
+          mediaType: application/vnd.tinx.tool.binary
+          source: bin/linux/arm64/setup-inline
+    - name: inline-assets
+      type: asset
+      platforms:
+        - os: any
+          arch: any
+          source: assets/templates
+  assets:
+    - name: template-assets
+      from: bundle.inline-assets
+      mount:
+        path: assets
+  environments:
+    - name: default-env
+      variables:
+        INLINE_GREETING: hello-inline
+        INLINE_ASSET_FILE: ${provider_assets}/templates/message.txt
+      export:
+        - INLINE_GREETING
+        - INLINE_ASSET_FILE
+  tools:
+    - name: setup-inline
+      runtime:
+        type: oci
+      source:
+        type: bundle
+        ref: setup-inline
+      install:
+        strategy: lazy
+      provides:
+        - setup-inline
+    - name: inline-tool
+      default: true
+      runtime:
+        type: script
+      source:
+        type: script
+        script: setup-inline "$TINX_TOOL_BIN"
+      install:
+        strategy: lazy
+      provides:
+        - inline-tool
+      dependsOn:
+        - tool: setup-inline
+      environments:
+        - default-env
+      env:
+        INLINE_TOOL_MODE: inline

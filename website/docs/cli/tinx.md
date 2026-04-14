@@ -8,8 +8,9 @@ title: tinx
 
 ```bash
 tinx init demo
-tinx provider add core/node as node
+tinx add core/node as node
 tinx --workspace demo status
+tinx --workspace demo ls
 tinx --workspace demo -- node --version
 tinx release --manifest tinx.yaml --push ghcr.io/acme/node-provider:v1.0.0
 ```
@@ -18,7 +19,25 @@ Use the top-level shortcuts when you want shorter commands:
 
 - `tinx use` instead of `tinx workspace use`
 - `tinx add`, `tinx remove`, `tinx update` for workspace providers
-- `tinx list` for provider and workspace inventory
+- `tinx ls` or `tinx list` for inventory
+
+## Execution entrypoints
+
+There are three normal ways to run workspace commands:
+
+- `tinx shell` for an interactive shell
+- `tinx exec <command> ...` for one command in the workspace environment
+- `tinx -- <command> ...` as the shortest workspace shortcut
+
+If you run `tinx --` with no command, tinx drops you into the workspace shell.
+
+## Inventory commands
+
+The current CLI distinguishes between provider-only and provider-plus-tool inventory:
+
+- `tinx provider list` shows providers
+- `tinx ls` shows providers and tools for a workspace or the default scope
+- `tinx status` shows the current workspace plus provider, tool, shim, and environment details
 
 ## Global flags
 
@@ -44,13 +63,13 @@ Available Commands:
   help        Help about any command
   init        Create or materialize a provider workspace
   install     Install provider metadata from an OCI layout or registry reference
-  list        List providers or inspect workspace inventory
+  list        List providers and tools or inspect workspace inventory
   pack        Package a provider into an OCI image layout
   provider    Manage workspace providers and provider inventory
   release     Build, package, and optionally push a provider artifact
   remove      Remove a provider from the current or selected workspace
   shell       Launch an interactive workspace shell
-  status      Show the current workspace, providers, shims, and environment
+  status      Show the current workspace, providers, tools, shims, and environment
   update      Refresh provider metadata for the current or selected workspace
   use         Select a workspace and optionally run a command inside its shell
   version     Print the tinx version

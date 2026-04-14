@@ -3,67 +3,53 @@ title: tinx documentation
 slug: /
 ---
 
-`tinx` is a workspace-centric runtime for tools. Providers are packaged as OCI artifacts, composed into a workspace, and executed through a reproducible shell environment.
+`tinx` is a workspace-first runtime for OCI-distributed provider packages. Instead of installing tools globally, you declare provider packages in a workspace, let tinx lock and cache them, and execute commands through lazy workspace shims.
 
-Instead of installing tools globally, tinx lets you:
+Use tinx when you want to:
 
-- define tools declaratively
-- resolve and lock versions
-- execute them inside an isolated, reproducible workspace
+- pin tool packages to a project workspace
+- expose multiple commands from one provider package
+- lazily materialize OCI-backed binaries and setup-installed tools
+- reuse one global provider cache across many workspaces
 
 ## Core concepts
 
 ### Workspace
 
-A **workspace** is the unit of execution. It defines which providers are available, which versions are locked, and how the runtime environment is built.
+A **workspace** is the execution boundary. It declares provider aliases and sources, writes a lock file with resolved versions and digests, and rebuilds `.workspace/` shell artifacts whenever the declared state changes.
 
-Think of it as a reproducible tool environment for a project.
+### Provider package
 
-Key properties:
+A **provider package** is the distribution unit. Canonically, a provider is a normalized package of resources stored as an OCI artifact.
 
-- declarative (`tinx.yaml`)
-- reproducible (`tinx.lock`)
-- isolated runtime (`.workspace/`)
+The active resource kinds are:
 
-### Provider
+- **Tool**: a command surface with a runtime and optional dependencies
+- **Bundle**: OCI-backed binaries or tarred asset payloads
+- **Asset**: a mounted view of a bundle inside the provider store
+- **Environment**: exported variables and path additions
 
-A **provider** is the packaged tool. tinx distributes providers as OCI artifacts so tool versions stay portable and immutable.
+Legacy manifests that declare `runtime: binary`, `entrypoint`, and `platforms` are still accepted, but tinx normalizes them into the same internal package model.
 
-Providers contain:
+### Tool
 
-- platform-specific binaries
-- optional assets such as templates or certificates
-- environment configuration
-- metadata such as capabilities and supported platforms
+A **tool** is the executable surface tinx resolves at runtime. One tool is usually marked as the provider default, while additional tools contribute command names through `provides`.
 
-Think of a provider as a versioned, portable tool package.
+Tools can depend on other tools inside the same provider. That is how setup-style providers work: a bundled installer tool can materialize a second tool only when its shim is used for the first time.
 
-### Alias
+### Alias and provided commands
 
-Inside a workspace, providers are mapped to **aliases**.
+A **workspace alias** points at the provider default tool. tinx also writes shims for every command in `provides`, so a single provider can expose several workspace commands.
 
-```yaml
-providers:
-  node:
-    source: core/node
-```
+### Runtime plugin
 
-Here:
+The runtime is internally split into built-in plugins:
 
-- `node` is the alias, or the command name you run
-- `core/node` is the provider source
+- `oci`: materialize a tool from bundle layers in the provider artifact
+- `script`: run an install script that creates the tool binary on demand
+- `local`: execute an existing path, including a path created by another tool
 
-### Runtime
-
-The runtime turns workspace state into an execution environment. It resolves providers, builds `PATH`, writes shims, and executes commands.
-
-Execution always happens through a workspace:
-
-```bash
-tinx -- node --version
-```
-
-Think of it as a deterministic shell built from providers.
+Tool execution is still normal process spawning. The plugins only decide how a tool is resolved and installed.
 
 ### tinx home vs workspace
 
@@ -79,29 +65,33 @@ This separation enables global caching, per-project isolation, and reuse across 
 ## Mental model
 
 ```text
-Provider (OCI artifact)
+Provider package (OCI artifact)
         ↓
 Installed into tinx home
         ↓
-Referenced in workspace (alias)
+Referenced in a workspace alias
         ↓
-Resolved + locked
+Workspace sync writes .workspace/bin shims
         ↓
-Runtime environment built
+Command enters hidden tinx __shim
         ↓
-Command executed via PATH
+Tool plan is resolved and missing tools are installed
+        ↓
+Target process executes with the merged environment
 ```
+
+That is why a workspace can feel instant after the first install. Metadata and OCI content are cached globally, while actual tool binaries are only materialized when a command needs them.
 
 ## Why tinx exists
 
-Modern tooling problems:
+Modern tooling problems usually look like this:
 
 - inconsistent tool versions across machines
-- complex setup scripts
-- global installations that conflict
-- CI environments that drift from local machines
+- setup scripts that drift over time
+- global installs that conflict with each other
+- CI environments that behave differently from local shells
 
-`tinx` addresses those problems by making tools declarative, using OCI as a universal distribution format, isolating execution per workspace, and making reproducibility the default.
+`tinx` addresses those problems by making provider packages declarative, using OCI as a universal distribution format, isolating execution per workspace, and making lazy reproducibility the default.
 
 ## Design principles
 
@@ -111,61 +101,72 @@ Execution always happens inside a workspace.
 
 ### OCI-native
 
-Providers are OCI artifacts, so distribution stays standard.
+Provider packages are stored and transported as OCI artifacts.
+
+### Normalized package model
+
+Legacy shorthands and modern multi-resource manifests end up in one internal package representation.
 
 ### Lazy materialization
 
-Only extract binaries when a workspace needs them.
+Only materialize bundled binaries or install setup-managed tools when a command actually needs them.
+
+### Pluggable runtimes
+
+Tool execution stays normal process execution, but resolution and install behavior comes from built-in runtime plugins such as `oci`, `script`, and `local`.
 
 ### Deterministic runtime
 
 The same workspace should behave the same way everywhere.
 
-### Simple execution model
-
-No RPC. No plugin framework. Just binaries on `PATH`.
-
 ## Typical workflow
 
-### 1. Define a workspace
+Declare a workspace:
 
 ```yaml
+apiVersion: tinx.io/v1
+kind: Workspace
+workspace: demo
 providers:
-  node: core/node
-  kubectl: tinx/kubectl
+  node:
+    source: core/node
 ```
 
-### 2. Resolve and lock
-
-- tinx resolves versions
-- tinx writes `tinx.lock`
-
-### 3. Build runtime
-
-- tinx creates `.workspace/`
-- tinx generates `PATH` and environment files
-- tinx creates shims
-
-### 4. Execute commands
+Initialize it and run commands:
 
 ```bash
-tinx -- node build
+tinx init ./tinx.yaml
+tinx -- node --version
+tinx status
+tinx ls
 ```
+
+The workspace sync prepares `.workspace/`, writes shims for aliases and provided commands, and records the resolved provider versions. The first command run then materializes only the tools it needs.
+
+## What changed in the current architecture
+
+The current runtime is not a single provider binary launcher anymore. It is a normalized package runtime with:
+
+- explicit `Tool`, `Bundle`, `Asset`, and `Environment` resources
+- lazy shims that re-enter tinx through `__shim`
+- a tool dependency planner for setup-style providers
+- managed-install tools declared with `install.tool` and `install.path`
+- tool inventory surfaced by `tinx ls` and `tinx status`
 
 ## What tinx is not
 
-- Not a package manager
+- Not a language-specific package manager
 - Not a build system
-- Not a plugin framework
+- Not a container orchestrator
 
-It is a runtime and distribution model for tools.
+It is a runtime layer for tool packages and workspace execution.
 
 ## How to read the docs
 
 Start with:
 
 - [Workspace](./concepts/workspace.md)
-- [Provider](./concepts/providers.md)
+- [Providers](./concepts/providers.md)
 - [Runtime shell](./concepts/runtime-shell.md)
 
 Then read:
@@ -176,9 +177,7 @@ Then read:
 
 ## Summary
 
-- **Workspace** defines the environment
-- **Provider** defines the tool
-- **Alias** defines the command
-- **Runtime** executes everything
-
-That separation is what makes tinx scalable for CNCF-style workflows.
+- **Workspace** defines aliases, locking, and runtime state.
+- **Provider package** defines tools and the resources they need.
+- **Tool** defines what command tinx resolves and how it is installed.
+- **Runtime plugins** materialize or install tools and then execute them.

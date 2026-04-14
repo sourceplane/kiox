@@ -2,11 +2,13 @@
 title: Provider packaging
 ---
 
-tinx packages providers as OCI image layouts. You can keep the layout on disk, install from it locally, or push it to a registry.
+tinx packages provider packages as OCI image layouts. You can keep the layout on disk, install from it locally, or push it to a registry.
+
+The packaged artifact always contains both the authoring manifest and the normalized package metadata tinx uses at runtime.
 
 ## `tinx pack`
 
-Use `pack` when the binaries and assets already exist:
+Use `pack` when the bundle sources already exist on disk:
 
 ```bash
 tinx pack \
@@ -19,8 +21,8 @@ tinx pack \
 `pack` reads:
 
 - `tinx.yaml`
-- the built binaries listed in `spec.platforms`
-- optional assets under `spec.layers.assets.root`
+- normalized package metadata derived from the manifest
+- bundle layer sources for binaries or tarred assets
 
 and writes a directory-based OCI layout to `oci/`.
 
@@ -47,7 +49,11 @@ tinx release \
 
 ## Build strategies
 
-By default, `tinx release` uses `go build` with the platforms listed in the provider manifest.
+By default, `tinx release` uses `go build` for the normalized bundle targets declared in the provider manifest.
+
+If `--main` is not set, tinx infers a main package from `cmd/<binary>` for each bundle-backed binary target.
+
+That means a provider package can publish several bundled tools without hard-coding one global entrypoint in the release step.
 
 Use GoReleaser when you already maintain a GoReleaser pipeline:
 
@@ -58,19 +64,28 @@ tinx release \
   --goreleaser-config .goreleaser.yaml
 ```
 
-If no GoReleaser config exists, tinx can generate one from the provider manifest.
+If no GoReleaser config exists, tinx can generate one from the normalized bundle targets in the provider manifest.
 
-## OCI layout contents
+## What gets packed
 
 Each packaged provider layout contains:
 
 - provider config JSON
 - the original `tinx.yaml`
-- provider metadata JSON
-- one binary layer per platform
-- an optional tarred assets layer
+- normalized package metadata in `package.json`
+- one OCI layer per bundle entry
+- tarred asset layers for asset bundles
 
-That layout is copied into tinx home during install and used later for binary materialization.
+The provider config records the default tool runtime, entrypoint, and default tool name so tinx can bootstrap installs quickly.
+
+## Setup-style providers
+
+Managed-install tools are not built directly unless they also have bundled binaries. Instead, the packaged artifact must include whatever installer tool they depend on.
+
+For example, in `setup-kubectl`:
+
+- `setup-kubectl` is bundle-backed and built into the OCI artifact
+- `kubectl` is a `local` tool whose binary is created lazily by `setup-kubectl`
 
 ## Install the result
 
@@ -78,3 +93,5 @@ That layout is copied into tinx home during install and used later for binary ma
 tinx install acme/my-provider --source ./oci
 tinx init demo -p ./oci as my-provider
 ```
+
+After install, the workspace shim path handles the final lazy tool materialization on first use.
