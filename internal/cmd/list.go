@@ -530,18 +530,11 @@ func displayToolCommands(commands []string) string {
 }
 
 func loadWorkspaceConfigAtRoot(root string) (workspace.Config, string, error) {
-	for _, name := range workspace.ManifestNames {
-		path := filepath.Join(root, name)
-		if _, err := os.Stat(path); err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return workspace.Config{}, "", fmt.Errorf("stat workspace manifest: %w", err)
-		}
-		config, err := workspace.Load(path)
-		if err != nil {
-			return workspace.Config{}, "", err
-		}
+	config, path, ok, err := loadWorkspaceConfigAtRootIfPresent(root)
+	if err != nil {
+		return workspace.Config{}, "", err
+	}
+	if ok {
 		return config, path, nil
 	}
 	return workspace.Config{}, "", fmt.Errorf("no workspace manifest found in %s", root)

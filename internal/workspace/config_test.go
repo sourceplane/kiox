@@ -66,7 +66,7 @@ func TestSyncRejectsProviderSourceSchemes(t *testing.T) {
 	root := t.TempDir()
 	config := Config{
 		Kind:      KindWorkspace,
-		Workspace: "dev",
+		Metadata:  Metadata{Name: "dev"},
 		Providers: map[string]Provider{
 			"echo": {Source: "custom://acme/echo@v1"},
 		},
@@ -78,5 +78,56 @@ func TestSyncRejectsProviderSourceSchemes(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), `unsupported provider source "custom://acme/echo@v1"`) {
 		t.Fatalf("unexpected Sync error: %v", err)
+	}
+}
+
+func TestSaveWritesCanonicalWorkspaceManifest(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ManifestName)
+	config := Config{
+		APIVersion: APIVersionV1,
+		Kind:       KindWorkspace,
+		Workspace:  "legacy-name",
+		Metadata:   Metadata{Name: "dev"},
+		Providers:  map[string]Provider{},
+	}
+
+	if err := Save(path, config); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read saved manifest: %v", err)
+	}
+	content := string(data)
+	for _, expected := range []string{"kind: Workspace", "providers: {}", "name: dev"} {
+		if !strings.Contains(content, expected) {
+			t.Fatalf("expected %q in saved manifest, got:\n%s", expected, content)
+		}
+	}
+	if strings.Contains(content, "workspace:") {
+		t.Fatalf("expected canonical manifest to omit legacy workspace field, got:\n%s", content)
+	}
+}
+
+func TestSaveLockWritesCanonicalMetadata(t *testing.T) {
+	root := t.TempDir()
+	if err := SaveLock(root, "dev", nil); err != nil {
+		t.Fatalf("SaveLock() error = %v", err)
+	}
+
+	data, err := os.ReadFile(LockPath(root))
+	if err != nil {
+		t.Fatalf("read saved lock file: %v", err)
+	}
+	content := string(data)
+	for _, expected := range []string{"kind: WorkspaceLock", "metadata:", "name: dev"} {
+		if !strings.Contains(content, expected) {
+			t.Fatalf("expected %q in saved lock file, got:\n%s", expected, content)
+		}
+	}
+	if strings.Contains(content, "workspace:") {
+		t.Fatalf("expected canonical lock file to omit legacy workspace field, got:\n%s", content)
 	}
 }

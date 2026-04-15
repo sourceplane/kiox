@@ -20,9 +20,9 @@ func newPackCommand() *cobra.Command {
 		Short: "Package a provider into an OCI image layout",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			absManifest, err := filepath.Abs(manifestPath)
+			absManifest, err := resolveProviderManifestPath(manifestPath)
 			if err != nil {
-				return fmt.Errorf("resolve manifest path: %w", err)
+				return err
 			}
 			root := artifactRoot
 			if root == "" {
@@ -44,7 +44,7 @@ func newPackCommand() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&manifestPath, "manifest", "tinx.yaml", "path to tinx.yaml")
+	cmd.Flags().StringVar(&manifestPath, "manifest", preferredProviderManifestName, "path to provider.yaml (legacy tinx.yaml also supported)")
 	cmd.Flags().StringVar(&artifactRoot, "artifact-root", "", "root containing built binaries and assets")
 	cmd.Flags().StringVar(&outputDir, "output", "oci", "output OCI image layout directory")
 	cmd.Flags().StringVar(&tag, "tag", "", "tag to write into the OCI layout index")

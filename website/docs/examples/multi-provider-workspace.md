@@ -9,7 +9,8 @@ One workspace can expose several provider packages on the same `PATH`. That is t
 ```yaml
 apiVersion: tinx.io/v1
 kind: Workspace
-workspace: dev
+metadata:
+  name: dev
 providers:
   node:
     source: core/node
@@ -21,10 +22,11 @@ providers:
     source: ghcr.io/acme/setup-kubectl:v1.31.0
 ```
 
-Initialize from the manifest:
+Save that as `tinx.yaml` in the project root, then initialize or reconcile it:
 
 ```bash
-tinx init ./tinx.yaml
+tinx init
+tinx sync   # after manual edits
 ```
 
 ## Run commands side by side

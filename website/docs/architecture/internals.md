@@ -57,7 +57,7 @@ The important architectural shift is that execution is now planned per tool, not
 When you package a provider:
 
 ```bash
-tinx release --manifest tinx.yaml --main ./cmd/my-provider --push ghcr.io/acme/my-provider:v1.2.3
+tinx release --manifest provider.yaml --main ./cmd/my-provider --push ghcr.io/acme/my-provider:v1.2.3
 ```
 
 tinx follows this path:

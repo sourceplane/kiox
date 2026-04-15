@@ -2,7 +2,14 @@
 title: Configuration
 ---
 
-tinx configuration is split across workspace manifests, provider package manifests, lock files, and tinx home state.
+tinx configuration is split across desired workspace state, provider package manifests, generated lock files, and tinx home state.
+
+## Desired vs actual state
+
+| File | Owner | Purpose |
+| --- | --- | --- |
+| `tinx.yaml` | User | Desired workspace name and provider declarations |
+| `tinx.lock` | tinx | Resolved provider versions, digests, and store bindings |
 
 ## Workspace manifest
 
@@ -11,7 +18,6 @@ Workspace manifests live in the workspace root and are normally saved as `tinx.y
 ```yaml
 apiVersion: tinx.io/v1
 kind: Workspace
-workspace: dev
 metadata:
   name: dev
 providers:
@@ -28,11 +34,14 @@ providers:
 | --- | --- |
 | `apiVersion` | Must be `tinx.io/v1` |
 | `kind` | Must be `Workspace` |
-| `workspace` | Workspace name written to the manifest |
-| `metadata.name` | Optional explicit display name |
+| `metadata.name` | Workspace name used by the CLI and lock file |
 | `providers` | Alias to provider source mapping |
 | `providers.<alias>.source` | OCI registry reference or local OCI layout path |
 | `providers.<alias>.plainHTTP` | Allow plain HTTP registry access for that provider |
+
+`tinx init` creates this file if it does not exist and initializes from it if it already exists. `tinx add` and `tinx remove` only rewrite `tinx.yaml` after provider reconciliation succeeds.
+
+Manual edits are expected. Run `tinx sync` after editing `tinx.yaml`, or let `tinx status`, `tinx exec`, `tinx shell`, or `tinx -- ...` reconcile automatically on the next workspace command.
 
 A provider entry may be a string shorthand:
 
@@ -43,7 +52,7 @@ providers:
 
 ## Provider package manifest
 
-Provider manifests also use `tinx.yaml`, but their `kind` is `Provider`.
+Provider package manifests are authored as `provider.yaml`. Legacy `tinx.yaml` provider manifests are still supported for backward compatibility. Workspace manifests stay in `tinx.yaml`.
 
 The current built-in runtime actively uses `Tool`, `Bundle`, `Asset`, and `Environment` resources. Some additional fields are parsed into package metadata for future expansion; those are called out explicitly below.
 
@@ -241,7 +250,8 @@ Each workspace sync writes `tinx.lock`:
 ```yaml
 apiVersion: tinx.io/v1
 kind: WorkspaceLock
-workspace: dev
+metadata:
+  name: dev
 providers:
   - alias: node
     provider: core/node
@@ -251,7 +261,7 @@ providers:
     store: 4f3f...
 ```
 
-Use the lock file as generated state. tinx rewrites it during sync.
+Use the lock file as generated state. tinx rewrites it during sync and it should not be edited by hand.
 
 ## Global tinx home config
 

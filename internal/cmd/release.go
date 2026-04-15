@@ -32,9 +32,9 @@ func newReleaseCommand() *cobra.Command {
 		Short: "Build, package, and optionally push a provider artifact",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			absManifest, err := filepath.Abs(manifestPath)
+			absManifest, err := resolveProviderManifestPath(manifestPath)
 			if err != nil {
-				return fmt.Errorf("resolve manifest path: %w", err)
+				return err
 			}
 			pkg, err := parser.Load(absManifest)
 			if err != nil {
@@ -85,7 +85,7 @@ func newReleaseCommand() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&manifestPath, "manifest", "tinx.yaml", "path to tinx.yaml")
+	cmd.Flags().StringVar(&manifestPath, "manifest", preferredProviderManifestName, "path to provider.yaml (legacy tinx.yaml also supported)")
 	cmd.Flags().StringVar(&outputDir, "output", "oci", "output OCI image layout directory")
 	cmd.Flags().StringVar(&distDir, "dist", "dist", "build output directory used before packaging")
 	cmd.Flags().StringVar(&mainPkg, "main", "", "Go main package to build")

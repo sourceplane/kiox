@@ -118,7 +118,18 @@ type generatedToggle struct {
 func generateGoReleaserConfigFromManifest(moduleRoot, manifestPath string) (string, error) {
 	resolvedManifest := manifestPath
 	if resolvedManifest == "" {
-		resolvedManifest = filepath.Join(moduleRoot, "tinx.yaml")
+		for _, candidate := range []string{"provider.yaml", "tinx.yaml"} {
+			candidatePath := filepath.Join(moduleRoot, candidate)
+			if _, err := os.Stat(candidatePath); err == nil {
+				resolvedManifest = candidatePath
+				break
+			} else if !os.IsNotExist(err) {
+				return "", fmt.Errorf("stat manifest path: %w", err)
+			}
+		}
+		if resolvedManifest == "" {
+			resolvedManifest = filepath.Join(moduleRoot, "provider.yaml")
+		}
 	} else if !filepath.IsAbs(resolvedManifest) {
 		resolvedManifest = filepath.Join(moduleRoot, resolvedManifest)
 	}

@@ -20,7 +20,7 @@ $TINX_HOME/store/<storeID>/oci/
 
 `storeID` is derived from the provider identity and manifest digest so different artifact revisions do not collide.
 
-The provider store root also contains the cached `tinx.yaml`, normalized `package.json`, extracted asset content, and any lazily materialized tool binaries.
+The provider store root also contains the cached provider manifest, normalized `package.json`, extracted asset content, and any lazily materialized tool binaries.
 
 ## Tool resolution and materialization
 

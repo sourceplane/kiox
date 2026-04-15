@@ -33,7 +33,7 @@ Use "tinx provider [command] --help" for more information about a command.
 
 ## `provider add`
 
-Add a provider source to the workspace manifest and sync it immediately. That sync rewrites the lock file and refreshes the workspace shell artifacts.
+Add a provider source to the workspace manifest and sync it immediately. tinx resolves, installs, and validates the provider first; only successful adds rewrite `tinx.yaml`, update `tinx.lock`, and refresh the workspace shell artifacts.
 
 ```text
 Add a provider to the current or selected workspace
@@ -89,7 +89,7 @@ tinx ls demo
 
 ## `provider remove`
 
-Remove a provider from the workspace manifest and refresh workspace state.
+Remove a provider from the workspace manifest and refresh workspace state. Successful removal also clears the provider from `tinx.lock` and workspace runtime state.
 
 ```text
 Remove a provider from the current or selected workspace
@@ -137,6 +137,8 @@ tinx provider update
 tinx provider update node lite-ci
 tinx update node
 ```
+
+If you edit `tinx.yaml` by hand, run `tinx sync` to reconcile it explicitly. Normal workspace entry points such as `tinx status`, `tinx exec`, `tinx shell`, and `tinx -- ...` also reconcile automatically.
 
 ## Related inventory commands
 

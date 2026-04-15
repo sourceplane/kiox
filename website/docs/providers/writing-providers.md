@@ -4,9 +4,11 @@ title: Writing providers
 
 Write a tinx provider package when you want to package a command or toolchain as an OCI artifact and expose one or more commands inside a workspace shell.
 
+Provider packages use `provider.yaml` as the preferred authoring manifest. Workspace manifests remain `tinx.yaml`. Legacy `tinx.yaml` provider manifests still work, but new provider packages should use the split naming.
+
 ## Provider checklist
 
-1. Create a `tinx.yaml` manifest.
+1. Create a `provider.yaml` manifest.
 2. Choose inline or multi-document authoring.
 3. Define one or more tools and mark one as default.
 4. Declare bundle layers for binaries or assets.
@@ -249,8 +251,9 @@ Use it when you need the old shorthand, but prefer the normalized package model 
 ## Test locally
 
 ```bash
-tinx release --manifest tinx.yaml --dist dist --output oci
+tinx release --manifest provider.yaml --dist dist --output oci
 tinx init demo -p ./oci as node
+tinx sync
 tinx --workspace demo ls
 tinx --workspace demo exec node --version
 ```

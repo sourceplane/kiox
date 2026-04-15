@@ -6,13 +6,15 @@ tinx packages provider packages as OCI image layouts. You can keep the layout on
 
 The packaged artifact always contains both the authoring manifest and the normalized package metadata tinx uses at runtime.
 
+Use `provider.yaml` as the authoring manifest for provider packages. Legacy `tinx.yaml` provider manifests are still supported.
+
 ## `tinx pack`
 
 Use `pack` when the bundle sources already exist on disk:
 
 ```bash
 tinx pack \
-  --manifest tinx.yaml \
+  --manifest provider.yaml \
   --artifact-root dist \
   --output oci \
   --tag v1.2.3
@@ -20,7 +22,7 @@ tinx pack \
 
 `pack` reads:
 
-- `tinx.yaml`
+- `provider.yaml`
 - normalized package metadata derived from the manifest
 - bundle layer sources for binaries or tarred assets
 
@@ -32,7 +34,7 @@ Use `release` when tinx should build first and then pack:
 
 ```bash
 tinx release \
-  --manifest tinx.yaml \
+  --manifest provider.yaml \
   --main ./cmd/my-provider \
   --dist dist \
   --output oci
@@ -42,7 +44,7 @@ Push to a registry in the same command:
 
 ```bash
 tinx release \
-  --manifest tinx.yaml \
+  --manifest provider.yaml \
   --main ./cmd/my-provider \
   --push ghcr.io/acme/my-provider:v1.2.3
 ```
@@ -59,7 +61,7 @@ Use GoReleaser when you already maintain a GoReleaser pipeline:
 
 ```bash
 tinx release \
-  --manifest tinx.yaml \
+  --manifest provider.yaml \
   --delegate-goreleaser \
   --goreleaser-config .goreleaser.yaml
 ```
@@ -71,7 +73,7 @@ If no GoReleaser config exists, tinx can generate one from the normalized bundle
 Each packaged provider layout contains:
 
 - provider config JSON
-- the original `tinx.yaml`
+- the original provider manifest
 - normalized package metadata in `package.json`
 - one OCI layer per bundle entry
 - tarred asset layers for asset bundles
