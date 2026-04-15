@@ -63,17 +63,11 @@ func runAddProviderCommand(cmd *cobra.Command, root *rootOptions, args []string,
 		return fmt.Errorf("workspace provider alias %q already exists", providerAlias)
 	}
 	providers[providerAlias] = providerSpec
-	target.Config.Providers = providers
-	target.Config.Spec.Providers = nil
+	desiredConfig := target.Config
+	desiredConfig.Providers = providers
+	desiredConfig.Spec.Providers = nil
 
-	manifestPath := workspace.ManifestPath(target.Root)
-	if err := workspace.Save(manifestPath, target.Config); err != nil {
-		return err
-	}
-	result, err := workspace.Sync(cmd.Context(), target.Root, target.Config, workspace.SyncOptions{
-		Out:        cmd.ErrOrStderr(),
-		GlobalHome: globalHome,
-	})
+	result, manifestPath, err := applyWorkspaceConfigChange(cmd.Context(), cmd.ErrOrStderr(), globalHome, target, desiredConfig)
 	if err != nil {
 		return err
 	}

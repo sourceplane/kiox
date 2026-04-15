@@ -11,6 +11,11 @@ The main abstractions are:
 - **Tool**: an executable surface exposed by a provider
 - **Runtime plugin**: the resolution and execution strategy for a tool (`oci`, `script`, or `local`)
 
+Workspace state follows a simple desired-vs-actual split:
+
+- `tinx.yaml`: user-owned desired workspace state
+- `tinx.lock`: tinx-owned resolved provider state
+
 ## Documentation
 
 - Start with the concept-first landing page: [website/docs/intro.md](website/docs/intro.md)
@@ -82,6 +87,8 @@ Create and use a workspace:
 
 ```bash
 tinx init demo
+tinx add core/node as node
+tinx sync
 tinx use demo
 ```
 
@@ -97,7 +104,7 @@ tinx -- lite-ci plan
 Package and publish a provider:
 
 ```bash
-tinx release --manifest tinx.yaml --main ./cmd/my-provider --push ghcr.io/acme/my-provider:v1.2.3
+tinx release --manifest provider.yaml --main ./cmd/my-provider --push ghcr.io/acme/my-provider:v1.2.3
 ```
 
 ## Development

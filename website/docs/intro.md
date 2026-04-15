@@ -16,7 +16,7 @@ Use tinx when you want to:
 
 ### Workspace
 
-A **workspace** is the execution boundary. It declares provider aliases and sources, writes a lock file with resolved versions and digests, and rebuilds `.workspace/` shell artifacts whenever the declared state changes.
+A **workspace** is the execution boundary. `tinx.yaml` declares the desired provider aliases and sources, `tinx.lock` records the resolved versions and digests, and `.workspace/` holds rebuildable shell artifacts.
 
 ### Provider package
 
@@ -121,12 +121,13 @@ The same workspace should behave the same way everywhere.
 
 ## Typical workflow
 
-Declare a workspace:
+Check in a workspace manifest:
 
 ```yaml
 apiVersion: tinx.io/v1
 kind: Workspace
-workspace: demo
+metadata:
+  name: demo
 providers:
   node:
     source: core/node
@@ -135,13 +136,14 @@ providers:
 Initialize it and run commands:
 
 ```bash
-tinx init ./tinx.yaml
+tinx init
+tinx sync   # after manual edits to tinx.yaml
 tinx -- node --version
 tinx status
 tinx ls
 ```
 
-The workspace sync prepares `.workspace/`, writes shims for aliases and provided commands, and records the resolved provider versions. The first command run then materializes only the tools it needs.
+The workspace reconcile step prepares `.workspace/`, writes shims for aliases and provided commands, and records the resolved provider versions in `tinx.lock`. The first command run then materializes only the tools it needs.
 
 ## What changed in the current architecture
 

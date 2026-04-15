@@ -133,6 +133,40 @@ func LoadProviderMetadataByKey(home, key string) (ProviderMetadata, error) {
 	return LoadProviderMetadata(home, namespace, name, version)
 }
 
+func RemoveProviderByKey(home, key string) error {
+	namespace, name, version, err := SplitProviderKey(key)
+	if err != nil {
+		return nil
+	}
+	if err := os.RemoveAll(VersionRoot(home, namespace, name, version)); err != nil {
+		return fmt.Errorf("remove provider %s: %w", key, err)
+	}
+	if err := removeDirIfEmpty(ProviderRoot(home, namespace, name)); err != nil {
+		return err
+	}
+	if err := removeDirIfEmpty(filepath.Join(home, "providers", namespace)); err != nil {
+		return err
+	}
+	return nil
+}
+
+func removeDirIfEmpty(path string) error {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("read directory %s: %w", path, err)
+	}
+	if len(entries) > 0 {
+		return nil
+	}
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove directory %s: %w", path, err)
+	}
+	return nil
+}
+
 func SaveInstallSource(home, namespace, name, version string, source Source) error {
 	if err := os.MkdirAll(VersionRoot(home, namespace, name, version), 0o755); err != nil {
 		return fmt.Errorf("create version root: %w", err)

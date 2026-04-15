@@ -27,6 +27,12 @@ A workspace is responsible for:
   .workspace/    # runtime state
 ```
 
+| File | Owner | Purpose |
+| --- | --- | --- |
+| `tinx.yaml` | User | Desired workspace name and provider sources |
+| `tinx.lock` | tinx | Resolved provider versions and digests |
+| `.workspace/` | tinx | Rebuildable shell/runtime artifacts |
+
 ### `tinx.yaml`
 
 Declares which provider packages belong to the workspace:
@@ -34,7 +40,8 @@ Declares which provider packages belong to the workspace:
 ```yaml
 apiVersion: tinx.io/v1
 kind: Workspace
-workspace: dev
+metadata:
+  name: dev
 
 providers:
   node:
@@ -60,16 +67,18 @@ This directory is rebuildable. tinx recreates it whenever the workspace is synce
 ## Workspace lifecycle
 
 ```text
-Declare → Sync → Lock → Build Shell Artifacts → Execute
+Edit Desired State → Reconcile → Lock → Build Shell Artifacts → Execute
 ```
 
-1. Declare provider aliases in `tinx.yaml`.
-2. Sync provider sources from local OCI layouts or remote registries.
+1. Declare provider aliases in `tinx.yaml` or add them with `tinx add`.
+2. Reconcile provider sources with `tinx init`, `tinx sync`, or any normal workspace execution entry point.
 3. Persist the resolved provider state in `tinx.lock`.
 4. Build `.workspace/bin`, `.workspace/env`, and `.workspace/path`.
 5. Run commands through `tinx exec`, `tinx shell`, or `tinx -- ...`.
 
 The actual tool binaries may still be lazy at this point. The first command run through a shim performs the final tool installation steps if needed.
+
+`tinx add` follows the same model: tinx resolves, installs, and validates the provider first, then updates `tinx.yaml` and `tinx.lock` only after that succeeds.
 
 ## Inventory and status
 
@@ -112,6 +121,7 @@ The workspace composes provider packages. The runtime resolves and executes thei
 ```bash
 tinx init
 tinx add core/node as node
+tinx sync
 tinx ls
 tinx status
 tinx -- node --version

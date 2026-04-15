@@ -63,6 +63,7 @@ type LockFile struct {
 	APIVersion string           `yaml:"apiVersion"`
 	Kind       string           `yaml:"kind"`
 	Workspace  string           `yaml:"workspace,omitempty"`
+	Metadata   Metadata         `yaml:"metadata,omitempty"`
 	Providers  []LockedProvider `yaml:"providers,omitempty"`
 }
 
@@ -115,18 +116,19 @@ func Save(path string, config Config) error {
 	document := struct {
 		APIVersion string              `yaml:"apiVersion,omitempty"`
 		Kind       string              `yaml:"kind,omitempty"`
-		Workspace  string              `yaml:"workspace,omitempty"`
 		Metadata   Metadata            `yaml:"metadata,omitempty"`
-		Providers  map[string]Provider `yaml:"providers,omitempty"`
+		Providers  map[string]Provider `yaml:"providers"`
 	}{
 		APIVersion: config.APIVersion,
-		Kind:       "workspace",
-		Workspace:  strings.TrimSpace(config.Workspace),
+		Kind:       KindWorkspace,
 		Metadata:   config.Metadata,
 		Providers:  config.ProviderMap(),
 	}
-	if document.Workspace == "" {
-		document.Workspace = config.Name()
+	if document.Metadata.Name == "" {
+		document.Metadata.Name = config.Name()
+	}
+	if document.Providers == nil {
+		document.Providers = map[string]Provider{}
 	}
 	data, err := yaml.Marshal(document)
 	if err != nil {
@@ -143,7 +145,7 @@ func (c *Config) Normalize() error {
 	if strings.EqualFold(c.Kind, KindWorkspace) {
 		c.Kind = KindWorkspace
 	}
-	if c.Kind == "" && (c.Workspace != "" || len(c.Providers) > 0 || len(c.Spec.Providers) > 0) {
+	if c.Kind == "" && (c.Workspace != "" || c.Metadata.Name != "" || len(c.Providers) > 0 || len(c.Spec.Providers) > 0) {
 		c.Kind = KindWorkspace
 	}
 	if c.Kind != KindWorkspace {
@@ -183,10 +185,13 @@ func (c Config) Name() string {
 }
 
 func (c Config) ProviderMap() map[string]Provider {
-	if len(c.Spec.Providers) > 0 {
+	if c.Spec.Providers != nil {
 		return c.Spec.Providers
 	}
-	return c.Providers
+	if c.Providers != nil {
+		return c.Providers
+	}
+	return map[string]Provider{}
 }
 
 func (c Config) ProviderAliases() []string {
@@ -262,7 +267,7 @@ func SaveLock(root, name string, providers []LockedProvider) error {
 	lock := LockFile{
 		APIVersion: APIVersionV1,
 		Kind:       KindWorkspaceLock,
-		Workspace:  strings.TrimSpace(name),
+		Metadata:   Metadata{Name: strings.TrimSpace(name)},
 		Providers:  append([]LockedProvider(nil), providers...),
 	}
 	data, err := yaml.Marshal(lock)
@@ -283,6 +288,9 @@ func LoadLock(root string) (LockFile, error) {
 	}
 	if err := yaml.Unmarshal(data, &lock); err != nil {
 		return lock, fmt.Errorf("decode workspace lock: %w", err)
+	}
+	if lock.Metadata.Name == "" {
+		lock.Metadata.Name = strings.TrimSpace(lock.Workspace)
 	}
 	return lock, nil
 }

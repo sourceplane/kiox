@@ -9,16 +9,18 @@ title: tinx
 ```bash
 tinx init demo
 tinx add core/node as node
+tinx sync
 tinx --workspace demo status
 tinx --workspace demo ls
 tinx --workspace demo -- node --version
-tinx release --manifest tinx.yaml --push ghcr.io/acme/node-provider:v1.0.0
+tinx release --manifest provider.yaml --push ghcr.io/acme/node-provider:v1.0.0
 ```
 
 Use the top-level shortcuts when you want shorter commands:
 
 - `tinx use` instead of `tinx workspace use`
 - `tinx add`, `tinx remove`, `tinx update` for workspace providers
+- `tinx sync` to reconcile manual edits to `tinx.yaml`
 - `tinx ls` or `tinx list` for inventory
 
 ## Execution entrypoints
@@ -70,6 +72,7 @@ Available Commands:
   remove      Remove a provider from the current or selected workspace
   shell       Launch an interactive workspace shell
   status      Show the current workspace, providers, tools, shims, and environment
+  sync        Reconcile workspace state from tinx.yaml
   update      Refresh provider metadata for the current or selected workspace
   use         Select a workspace and optionally run a command inside its shell
   version     Print the tinx version

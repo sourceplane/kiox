@@ -36,6 +36,10 @@ func Sync(ctx context.Context, root string, config Config, opts SyncOptions) (Sy
 	if err := state.EnsureHome(home); err != nil {
 		return SyncResult{}, err
 	}
+	existingAliases, err := state.LoadAliases(home)
+	if err != nil {
+		return SyncResult{}, err
+	}
 	result := SyncResult{
 		Home:      home,
 		Aliases:   make(map[string]string, len(config.ProviderMap())),
@@ -80,6 +84,9 @@ func Sync(ctx context.Context, root string, config Config, opts SyncOptions) (Sy
 			Resolved: lockedProviderResolvedSource(installed, installSource),
 			Store:    installed.StoreID,
 		})
+	}
+	if err := removeStaleWorkspaceProviders(home, existingAliases, result.Aliases); err != nil {
+		return SyncResult{}, err
 	}
 	if err := state.SaveAliases(home, result.Aliases); err != nil {
 		return SyncResult{}, err
@@ -169,4 +176,35 @@ func localLayoutPath(source string) (string, bool) {
 		return "", false
 	}
 	return absPath, true
+}
+
+func removeStaleWorkspaceProviders(home string, previousAliases, desiredAliases map[string]string) error {
+	desiredKeys := make(map[string]struct{}, len(desiredAliases))
+	for _, key := range desiredAliases {
+		trimmed := strings.TrimSpace(key)
+		if trimmed == "" {
+			continue
+		}
+		desiredKeys[trimmed] = struct{}{}
+	}
+	staleKeys := make(map[string]struct{})
+	for alias, key := range previousAliases {
+		trimmedKey := strings.TrimSpace(key)
+		if trimmedKey == "" {
+			continue
+		}
+		if desiredKey, ok := desiredAliases[alias]; ok && strings.TrimSpace(desiredKey) == trimmedKey {
+			continue
+		}
+		if _, ok := desiredKeys[trimmedKey]; ok {
+			continue
+		}
+		staleKeys[trimmedKey] = struct{}{}
+	}
+	for key := range staleKeys {
+		if err := state.RemoveProviderByKey(home, key); err != nil {
+			return err
+		}
+	}
+	return nil
 }

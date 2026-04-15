@@ -47,17 +47,11 @@ func runInitCommand(cmd *cobra.Command, root *rootOptions, args []string, defaul
 	if err != nil {
 		return err
 	}
-	if err := workspace.Save(workspace.ManifestPath(target.Root), target.Config); err != nil {
-		return err
-	}
 	globalHome, err := ensureGlobalHome(root.Home)
 	if err != nil {
 		return err
 	}
-	result, err := workspace.Sync(cmd.Context(), target.Root, target.Config, workspace.SyncOptions{
-		Out:        cmd.ErrOrStderr(),
-		GlobalHome: globalHome,
-	})
+	result, manifestPath, err := applyWorkspaceConfigChange(cmd.Context(), cmd.ErrOrStderr(), globalHome, target, target.Config)
 	if err != nil {
 		return err
 	}
@@ -69,7 +63,7 @@ func runInitCommand(cmd *cobra.Command, root *rootOptions, args []string, defaul
 	}
 	writeLine(cmd.OutOrStdout(), "initialized workspace %s", target.Config.Name())
 	writeLine(cmd.OutOrStdout(), "active workspace: %s", target.Config.Name())
-	writeLine(cmd.OutOrStdout(), "manifest: %s", workspace.ManifestPath(target.Root))
+	writeLine(cmd.OutOrStdout(), "manifest: %s", manifestPath)
 	writeLine(cmd.OutOrStdout(), "home: %s", result.Home)
 	return nil
 }
@@ -139,9 +133,17 @@ func buildInitWorkspaceTarget(input initCommandInput) (*workspaceTarget, error) 
 		if loadErr != nil {
 			return nil, loadErr
 		}
-		return &workspaceTarget{Root: filepath.Dir(absTarget), ConfigPath: workspace.ManifestPath(filepath.Dir(absTarget)), Config: config}, nil
+		return &workspaceTarget{Root: filepath.Dir(absTarget), ConfigPath: absTarget, Config: config}, nil
 	} else if err != nil && !os.IsNotExist(err) {
 		return nil, fmt.Errorf("stat workspace target: %w", err)
+	}
+	if existingConfig, configPath, ok, err := loadWorkspaceConfigAtRootIfPresent(absTarget); err != nil {
+		return nil, err
+	} else if ok {
+		if len(input.Providers) > 0 {
+			return nil, fmt.Errorf("provider flags cannot be combined with an existing workspace manifest")
+		}
+		return &workspaceTarget{Root: absTarget, ConfigPath: configPath, Config: existingConfig}, nil
 	}
 	if len(input.Providers) == 0 {
 		lowerTarget := strings.ToLower(absTarget)
@@ -150,7 +152,8 @@ func buildInitWorkspaceTarget(input initCommandInput) (*workspaceTarget, error) 
 		}
 	}
 	config := workspace.Config{
-		Workspace: filepath.Base(absTarget),
+		APIVersion: workspace.APIVersionV1,
+		Kind:       workspace.KindWorkspace,
 		Metadata: workspace.Metadata{
 			Name: filepath.Base(absTarget),
 		},

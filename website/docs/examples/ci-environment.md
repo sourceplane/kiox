@@ -25,7 +25,8 @@ tinx --workspace ci-workspace -- node --version
 Or check in a `tinx.yaml` and initialize from that manifest:
 
 ```bash
-tinx init ./tinx.yaml
+tinx init
+tinx sync   # after manual edits
 tinx -- node build
 ```
 

@@ -39,6 +39,32 @@ func TestInitWorkspaceFromFlagsAutoSelectsWorkspaceAndDispatches(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(workspaceRoot, "tinx.lock")); err != nil {
 		t.Fatalf("expected workspace lock file: %v", err)
 	}
+	manifestBytes, err := os.ReadFile(filepath.Join(workspaceRoot, "tinx.yaml"))
+	if err != nil {
+		t.Fatalf("read workspace manifest: %v", err)
+	}
+	manifestContent := string(manifestBytes)
+	for _, expected := range []string{"kind: Workspace", "providers: {}", "name: my-workspace"} {
+		if !strings.Contains(manifestContent, expected) {
+			t.Fatalf("expected %q in workspace manifest, got:\n%s", expected, manifestContent)
+		}
+	}
+	if strings.Contains(manifestContent, "workspace:") {
+		t.Fatalf("expected workspace manifest to omit legacy workspace field, got:\n%s", manifestContent)
+	}
+	lockBytes, err := os.ReadFile(filepath.Join(workspaceRoot, "tinx.lock"))
+	if err != nil {
+		t.Fatalf("read workspace lock: %v", err)
+	}
+	lockContent := string(lockBytes)
+	for _, expected := range []string{"kind: WorkspaceLock", "metadata:", "name: my-workspace"} {
+		if !strings.Contains(lockContent, expected) {
+			t.Fatalf("expected %q in workspace lock, got:\n%s", expected, lockContent)
+		}
+	}
+	if strings.Contains(lockContent, "workspace:") {
+		t.Fatalf("expected workspace lock to omit legacy workspace field, got:\n%s", lockContent)
+	}
 
 	runRootCommand(t, []string{"--tinx-home", globalHome, "add", liteCILayout, "as", "lite-ci"})
 	runRootCommand(t, []string{"--tinx-home", globalHome, "add", nodeLayout, "as", "node"})
@@ -209,6 +235,81 @@ func TestInitDefaultsToCurrentDirectory(t *testing.T) {
 	}
 }
 
+func TestInitUsesExistingWorkspaceManifest(t *testing.T) {
+	tempDir := t.TempDir()
+	globalHome := filepath.Join(tempDir, ".tinx-global")
+	workspaceRoot := filepath.Join(tempDir, "project")
+	if err := os.MkdirAll(workspaceRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	existingManifest := strings.Join([]string{
+		"apiVersion: tinx.io/v1",
+		"kind: Workspace",
+		"metadata:",
+		"  name: custom-space",
+		"providers: {}",
+		"",
+	}, "\n")
+	manifestPath := filepath.Join(workspaceRoot, "tinx.yaml")
+	if err := os.WriteFile(manifestPath, []byte(existingManifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	initBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "init", workspaceRoot})
+	if !bytes.Contains(initBuf.Bytes(), []byte("initialized workspace custom-space")) {
+		t.Fatalf("unexpected init output: %s", initBuf.String())
+	}
+	manifestBytes, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatalf("read workspace manifest: %v", err)
+	}
+	manifestContent := string(manifestBytes)
+	for _, expected := range []string{"kind: Workspace", "name: custom-space", "providers: {}"} {
+		if !strings.Contains(manifestContent, expected) {
+			t.Fatalf("expected %q in initialized manifest, got:\n%s", expected, manifestContent)
+		}
+	}
+	if strings.Contains(manifestContent, "name: project") {
+		t.Fatalf("expected init to preserve the existing workspace name, got:\n%s", manifestContent)
+	}
+}
+
+func TestAddProviderDoesNotMutateManifestOnFailure(t *testing.T) {
+	tempDir := t.TempDir()
+	globalHome := filepath.Join(tempDir, ".tinx-global")
+	workspaceRoot := filepath.Join(tempDir, "workspace")
+
+	runRootCommand(t, []string{"--tinx-home", globalHome, "init", workspaceRoot})
+	manifestPath := filepath.Join(workspaceRoot, "tinx.yaml")
+	beforeManifest, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatalf("read workspace manifest before add: %v", err)
+	}
+
+	buf := new(bytes.Buffer)
+	err = executeCLI(context.Background(), []string{"--tinx-home", globalHome, "add", "custom://broken-provider"}, buf, buf)
+	if err == nil {
+		t.Fatal("expected add to fail for unsupported provider source")
+	}
+	if !strings.Contains(err.Error(), `unsupported provider source "custom://broken-provider"`) {
+		t.Fatalf("unexpected add error: %v", err)
+	}
+	afterManifest, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatalf("read workspace manifest after add failure: %v", err)
+	}
+	if !bytes.Equal(beforeManifest, afterManifest) {
+		t.Fatalf("expected add failure to leave manifest unchanged\nbefore:\n%s\nafter:\n%s", string(beforeManifest), string(afterManifest))
+	}
+	lock, err := workspacepkg.LoadLock(workspaceRoot)
+	if err != nil {
+		t.Fatalf("load workspace lock: %v", err)
+	}
+	if len(lock.Providers) != 0 {
+		t.Fatalf("expected add failure to leave lock unchanged, got %#v", lock.Providers)
+	}
+}
+
 func TestInitWorkspaceFromConfigFileAndUseOneShotCommand(t *testing.T) {
 	tempDir := t.TempDir()
 	globalHome := filepath.Join(tempDir, ".tinx-global")
@@ -260,6 +361,52 @@ providers:
 
 	runBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "--workspace", workspaceRoot, "--", "lite-ci", "plan", "--", "node", "build"})
 	assertWorkspaceShellOutput(t, runBuf)
+}
+
+func TestSyncReconcilesManualManifestEdits(t *testing.T) {
+	tempDir := t.TempDir()
+	globalHome := filepath.Join(tempDir, ".tinx-global")
+	liteCIProject := createLiteCIProviderProject(t, filepath.Join(tempDir, "lite-ci-provider"))
+	liteCILayout := releaseProviderLayout(t, globalHome, liteCIProject)
+	workspaceRoot := filepath.Join(tempDir, "dev")
+
+	runRootCommand(t, []string{"--tinx-home", globalHome, "init", workspaceRoot})
+	runRootCommand(t, []string{"--tinx-home", globalHome, "add", liteCILayout, "as", "lite-ci"})
+
+	if err := workspacepkg.Save(filepath.Join(workspaceRoot, "tinx.yaml"), workspacepkg.Config{
+		APIVersion: workspacepkg.APIVersionV1,
+		Kind:       workspacepkg.KindWorkspace,
+		Metadata:   workspacepkg.Metadata{Name: "dev"},
+		Providers:  map[string]workspacepkg.Provider{},
+	}); err != nil {
+		t.Fatalf("save reconciled workspace manifest: %v", err)
+	}
+
+	syncBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "sync"})
+	if !strings.Contains(syncBuf.String(), "synced workspace dev") {
+		t.Fatalf("unexpected sync output: %s", syncBuf.String())
+	}
+	aliases, err := state.LoadAliases(workspacepkg.Home(workspaceRoot))
+	if err != nil {
+		t.Fatalf("load workspace aliases after sync: %v", err)
+	}
+	if len(aliases) != 0 {
+		t.Fatalf("expected sync to remove workspace aliases, got %#v", aliases)
+	}
+	lock, err := workspacepkg.LoadLock(workspaceRoot)
+	if err != nil {
+		t.Fatalf("load workspace lock after sync: %v", err)
+	}
+	if len(lock.Providers) != 0 {
+		t.Fatalf("expected sync to clear lock providers, got %#v", lock.Providers)
+	}
+	providers, err := state.ListInstalledProviders(workspacepkg.Home(workspaceRoot))
+	if err != nil {
+		t.Fatalf("list workspace providers after sync: %v", err)
+	}
+	if len(providers) != 0 {
+		t.Fatalf("expected sync to remove workspace-installed providers, got %#v", providers)
+	}
 }
 
 func TestInteractiveWorkspaceShellUsesWorkspaceEnvironment(t *testing.T) {

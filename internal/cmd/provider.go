@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 
@@ -91,18 +90,11 @@ func runRemoveProviderCommand(cmd *cobra.Command, root *rootOptions, selector st
 	}
 	providers := cloneWorkspaceProviders(target.Config)
 	delete(providers, alias)
-	target.Config.Providers = providers
-	target.Config.Spec.Providers = nil
-	if ref != "" && !providerKeyStillReferenced(currentAliases, target.Config, alias, ref) {
-		if err := removeProviderCache(home, ref); err != nil {
-			return err
-		}
-	}
-	manifestPath := workspace.ManifestPath(target.Root)
-	if err := workspace.Save(manifestPath, target.Config); err != nil {
-		return err
-	}
-	result, err := workspace.Sync(cmd.Context(), target.Root, target.Config, workspace.SyncOptions{Out: cmd.ErrOrStderr(), GlobalHome: globalHome})
+	desiredConfig := target.Config
+	desiredConfig.Providers = providers
+	desiredConfig.Spec.Providers = nil
+	_ = ref
+	result, manifestPath, err := applyWorkspaceConfigChange(cmd.Context(), cmd.ErrOrStderr(), globalHome, target, desiredConfig)
 	if err != nil {
 		return err
 	}
@@ -229,12 +221,5 @@ func removeProviderCache(home, ref string) error {
 	if strings.TrimSpace(ref) == "" {
 		return nil
 	}
-	namespace, name, version, err := state.SplitProviderKey(ref)
-	if err != nil {
-		return nil
-	}
-	if err := os.RemoveAll(state.VersionRoot(home, namespace, name, version)); err != nil {
-		return fmt.Errorf("remove provider cache for %s: %w", ref, err)
-	}
-	return nil
+	return state.RemoveProviderByKey(home, ref)
 }

@@ -379,3 +379,77 @@ func looksLikeManifestOrScript(name string) bool {
 	}
 	return false
 }
+
+func loadWorkspaceConfigAtRootIfPresent(root string) (workspace.Config, string, bool, error) {
+	for _, name := range workspace.ManifestNames {
+		path := filepath.Join(root, name)
+		if _, err := os.Stat(path); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return workspace.Config{}, "", false, fmt.Errorf("stat workspace manifest: %w", err)
+		}
+		config, err := workspace.Load(path)
+		if err != nil {
+			return workspace.Config{}, "", false, err
+		}
+		return config, path, true, nil
+	}
+	return workspace.Config{}, "", false, nil
+}
+
+func applyWorkspaceConfigChange(ctx context.Context, out io.Writer, globalHome string, target *workspaceTarget, desired workspace.Config) (workspace.SyncResult, string, error) {
+	if target == nil {
+		return workspace.SyncResult{}, "", fmt.Errorf("workspace target is required")
+	}
+	manifestPath := workspace.ManifestPath(target.Root)
+	hadExistingConfig := workspaceConfigExists(target.ConfigPath)
+	previousConfig := target.Config
+	result, err := workspace.Sync(ctx, target.Root, desired, workspace.SyncOptions{
+		Out:        out,
+		GlobalHome: globalHome,
+	})
+	if err != nil {
+		return workspace.SyncResult{}, manifestPath, err
+	}
+	if err := workspace.Save(manifestPath, desired); err != nil {
+		rollbackErr := rollbackWorkspaceConfigChange(ctx, out, globalHome, target.Root, hadExistingConfig, previousConfig)
+		if rollbackErr != nil {
+			return workspace.SyncResult{}, manifestPath, fmt.Errorf("save workspace manifest: %w (rollback failed: %v)", err, rollbackErr)
+		}
+		return workspace.SyncResult{}, manifestPath, fmt.Errorf("save workspace manifest: %w", err)
+	}
+	target.Config = desired
+	target.ConfigPath = manifestPath
+	target.Name = desired.Name()
+	target.Status = "ready"
+	return result, manifestPath, nil
+}
+
+func rollbackWorkspaceConfigChange(ctx context.Context, out io.Writer, globalHome, root string, hadExistingConfig bool, previousConfig workspace.Config) error {
+	if hadExistingConfig {
+		_, err := workspace.Sync(ctx, root, previousConfig, workspace.SyncOptions{
+			Out:        out,
+			GlobalHome: globalHome,
+		})
+		return err
+	}
+	for _, path := range []string{workspace.Home(root), workspace.LockPath(root)} {
+		if err := os.RemoveAll(path); err != nil {
+			return fmt.Errorf("cleanup workspace path %s: %w", path, err)
+		}
+	}
+	return nil
+}
+
+func workspaceConfigExists(path string) bool {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return false
+	}
+	info, err := os.Stat(trimmed)
+	if err != nil {
+		return false
+	}
+	return !info.IsDir()
+}
