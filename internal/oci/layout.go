@@ -219,8 +219,11 @@ func installMetadata(layoutPath, tag, activationHome, storeHome, alias, ref stri
 		Capabilities:           defaultTool.CapabilityNames(),
 		CapabilityDescriptions: capabilityDescriptions(defaultTool),
 		Platforms:              toStatePlatforms(pkg.PlatformSummaries()),
-		Source:                 state.Source{LayoutPath: storeLayoutPath, Tag: tag, Ref: resolvedSourceRef(ref, manifestDescriptor.Digest.String()), PlainHTTP: plainHTTP},
+		Source:                 state.Source{LayoutPath: storeLayoutPath, Tag: normalizedLayoutTag(ref, tag), Ref: resolvedSourceRef(ref, manifestDescriptor.Digest.String()), PlainHTTP: plainHTTP},
 		InstalledAt:            time.Now().UTC(),
+	}
+	if err := saveStoreProviderMetadata(storeRoot, meta); err != nil {
+		return state.ProviderMetadata{}, err
 	}
 	if err := state.SaveProviderMetadata(activationHome, meta); err != nil {
 		return state.ProviderMetadata{}, err
@@ -293,7 +296,7 @@ func materializeTool(meta state.ProviderMetadata, pkg core.Package, tool core.To
 	if err := os.MkdirAll(storeRoot, 0o755); err != nil {
 		return "", fmt.Errorf("create provider store root: %w", err)
 	}
-	if err := extractBundleAssets(meta, view, storeRoot, allowRemoteHydrate, tracker); err != nil {
+	if err := extractBundleAssets(meta, view, storeRoot, goos, goarch, allowRemoteHydrate, tracker); err != nil {
 		return "", err
 	}
 	bundleLayer, descriptor, ok := selectBundleLayer(pkg, view, tool, goos, goarch)
@@ -311,7 +314,7 @@ func materializeTool(meta state.ProviderMetadata, pkg core.Package, tool core.To
 	if err != nil {
 		if allowRemoteHydrate && meta.Source.Ref != "" {
 			tracker.Info("hydrate", "binary blob missing, hydrating from remote")
-			if hydrateErr := hydrateStoreFromRemote(context.Background(), meta.Source.LayoutPath, meta.Source.Ref, meta.Source.PlainHTTP); hydrateErr != nil {
+			if hydrateErr := hydrateStoreFromRemote(context.Background(), meta.Source.LayoutPath, meta.Source.Ref, meta.Source.PlainHTTP, remoteCopySelection{goos: goos, goarch: goarch}, tracker, ""); hydrateErr != nil {
 				return "", err
 			}
 			return materializeTool(meta, pkg, tool, goos, goarch, false, tracker)
@@ -629,7 +632,7 @@ func copyDirectory(srcDir, dstDir string) error {
 			if err := os.Remove(target); err != nil {
 				return err
 			}
-		} else if err != nil && !os.IsNotExist(err) {
+		} else if !os.IsNotExist(err) {
 			return err
 		}
 		return os.WriteFile(target, data, info.Mode())
@@ -764,7 +767,7 @@ func lookupBundleDescriptor(view ProviderManifestView, bundleName string, layer 
 	return ocispec.Descriptor{}, false
 }
 
-func extractBundleAssets(meta state.ProviderMetadata, view ProviderManifestView, storeRoot string, allowRemoteHydrate bool, tracker *progress.Tracker) error {
+func extractBundleAssets(meta state.ProviderMetadata, view ProviderManifestView, storeRoot, goos, goarch string, allowRemoteHydrate bool, tracker *progress.Tracker) error {
 	for _, layer := range view.BundleLayers {
 		if !isArchiveMediaType(layer.MediaType) {
 			continue
@@ -772,10 +775,10 @@ func extractBundleAssets(meta state.ProviderMetadata, view ProviderManifestView,
 		if err := extractTarBlob(meta.Source.LayoutPath, layer.Descriptor, storeRoot); err != nil {
 			if allowRemoteHydrate && meta.Source.Ref != "" {
 				tracker.Info("hydrate", "cached asset layer missing, hydrating from remote")
-				if hydrateErr := hydrateStoreFromRemote(context.Background(), meta.Source.LayoutPath, meta.Source.Ref, meta.Source.PlainHTTP); hydrateErr != nil {
+				if hydrateErr := hydrateStoreFromRemote(context.Background(), meta.Source.LayoutPath, meta.Source.Ref, meta.Source.PlainHTTP, remoteCopySelection{goos: goos, goarch: goarch}, tracker, ""); hydrateErr != nil {
 					return err
 				}
-				return extractBundleAssets(meta, view, storeRoot, false, tracker)
+				return extractBundleAssets(meta, view, storeRoot, goos, goarch, false, tracker)
 			}
 			return err
 		}

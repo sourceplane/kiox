@@ -78,6 +78,8 @@ Each packaged provider layout contains:
 - one OCI layer per bundle entry
 - tarred asset layers for asset bundles
 
+When a bundle entry is platform-specific, tinx writes a platform-qualified binary layer media type into the packaged OCI layout. That lets remote installs hydrate only the current host binaries instead of downloading every published platform blob.
+
 The provider config records the default tool runtime, entrypoint, and default tool name so tinx can bootstrap installs quickly.
 
 ## Setup-style providers

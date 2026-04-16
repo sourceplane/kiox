@@ -20,12 +20,18 @@ type ShellBuildOptions struct {
 	GlobalHome string
 }
 
+type ShellTarget struct {
+	Alias string
+	Tool  string
+}
+
 type ShellEnvironment struct {
 	Env         map[string]string
 	PathEntries []string
 	EnvFile     string
 	PathFile    string
 	ShimDir     string
+	Targets     map[string]ShellTarget
 }
 
 type shimTarget struct {
@@ -157,12 +163,17 @@ func BuildShellEnvironment(root, home string, aliases map[string]string, opts Sh
 	if err := writePathFile(pathFile, pathEntries); err != nil {
 		return ShellEnvironment{}, err
 	}
+	targets := make(map[string]ShellTarget, len(shimTargets))
+	for name, target := range shimTargets {
+		targets[name] = ShellTarget{Alias: target.Alias, Tool: target.Tool}
+	}
 	return ShellEnvironment{
 		Env:         env,
 		PathEntries: pathEntries,
 		EnvFile:     envFile,
 		PathFile:    pathFile,
 		ShimDir:     shimDir,
+		Targets:     targets,
 	}, nil
 }
 

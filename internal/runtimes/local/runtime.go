@@ -3,7 +3,6 @@ package local
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -69,7 +68,7 @@ func (Plugin) IsInstalled(resolved truntime.ResolvedTool, ctx truntime.Context) 
 		}
 		return !info.IsDir(), nil
 	}
-	_, err := exec.LookPath(resolved.BinaryPath)
+	_, err := truntime.LookPath(resolved.BinaryPath, ctx.Env, ctx.PathEntries)
 	if err == nil {
 		return true, nil
 	}

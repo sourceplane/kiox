@@ -49,6 +49,10 @@ func Sync(ctx context.Context, root string, config Config, opts SyncOptions) (Sy
 	if storeHome == "" {
 		storeHome = home
 	}
+	remoteCache, err := oci.LoadRemoteInstallCache(home, storeHome)
+	if err != nil {
+		return SyncResult{}, err
+	}
 	locked, err := LoadLock(root)
 	if err != nil {
 		return SyncResult{}, err
@@ -69,7 +73,8 @@ func Sync(ctx context.Context, root string, config Config, opts SyncOptions) (Sy
 		provider := config.ProviderMap()[alias]
 		source := resolveWorkspaceSource(root, provider.Source)
 		installSource := resolvedWorkspaceInstallSource(source, lockedByAlias[alias], refreshAliases, alias)
-		installed, err := installWorkspaceProvider(ctx, home, storeHome, alias, installSource, provider, opts)
+		_, refreshRequested := refreshAliases[alias]
+		installed, err := installWorkspaceProvider(ctx, home, storeHome, alias, installSource, provider, remoteCache, !refreshRequested, opts)
 		if err != nil {
 			return SyncResult{}, err
 		}
@@ -97,14 +102,21 @@ func Sync(ctx context.Context, root string, config Config, opts SyncOptions) (Sy
 	return result, nil
 }
 
-func installWorkspaceProvider(ctx context.Context, home, storeHome, alias, source string, provider Provider, opts SyncOptions) (state.ProviderMetadata, error) {
+func installWorkspaceProvider(ctx context.Context, home, storeHome, alias, source string, provider Provider, remoteCache *oci.RemoteInstallCache, allowCache bool, opts SyncOptions) (state.ProviderMetadata, error) {
 	if layoutPath, ok := localLayoutPath(source); ok {
 		return oci.InstallMetadata(layoutPath, "", home, storeHome, alias, opts.Out)
 	}
 	if resolver.HasSourceScheme(source) {
 		return state.ProviderMetadata{}, fmt.Errorf("unsupported provider source %q: expected an OCI registry reference or local OCI layout", source)
 	}
-	return oci.InstallRemoteFull(ctx, home, storeHome, source, alias, provider.PlainHTTP, opts.Out)
+	if allowCache {
+		if cached, ok, err := remoteCache.Activate(home, alias, source, true, provider.PlainHTTP); err != nil {
+			return state.ProviderMetadata{}, err
+		} else if ok {
+			return cached, nil
+		}
+	}
+	return oci.InstallRemoteFull(ctx, home, storeHome, source, alias, provider.PlainHTTP, allowCache, opts.Out)
 }
 
 func resolvedWorkspaceInstallSource(source string, locked LockedProvider, refreshAliases map[string]struct{}, alias string) string {

@@ -9,7 +9,7 @@ tinx keeps cache, source, and runtime state separate so sync stays small and exe
 | Layer | Purpose |
 | --- | --- |
 | **Workspace lock state** | resolved provider state in `tinx.lock` |
-| **Provider metadata** | installed metadata under `$TINX_HOME/providers/...` |
+| **Provider metadata** | workspace activation metadata under `$TINX_HOME/providers/...` plus cached store metadata under `$TINX_HOME/store/<storeID>/provider-metadata.json` |
 | **OCI store** | copied OCI layouts under `$TINX_HOME/store/<storeID>/oci/` |
 | **Materialized artifacts** | extracted binaries, installed tools, and assets under the provider store root |
 
@@ -21,6 +21,8 @@ Two storage layers matter:
 - **workspace** is the project-specific runtime state
 
 That separation enables global caching, per-project isolation, and fast reuse across workspaces.
+
+If a second workspace resolves to the same provider digest, tinx can activate the cached shared-store metadata into that workspace and skip the registry pull entirely.
 
 ## Lazy materialization
 
@@ -65,7 +67,9 @@ That avoids unnecessary work and prevents permission issues when previously cach
 
 ## Remote hydration
 
-If tinx has metadata and a stored remote reference but the runtime blobs are missing, it can hydrate the local OCI store from the registry and retry extraction. That supports partial installs and resumed environments.
+Remote installs pull metadata first. tinx stores the manifest and normalized package data, then hydrates only the current host runtime blobs and shared archive layers when they are actually needed.
+
+Platform-qualified binary layer media types let tinx skip non-host OS and architecture blobs during the pull. If tinx has metadata and a stored remote reference but the required runtime blobs are missing, it can hydrate the local OCI store from the registry and retry extraction. That supports partial installs and resumed environments.
 
 Hydration is the exception path, not the normal repeat-run path.
 
@@ -77,6 +81,8 @@ Use refresh commands when you want tinx to look for updated provider metadata:
 tinx provider update
 tinx provider update node
 ```
+
+Explicit refresh and update commands bypass normal remote cache reuse so tinx re-checks the upstream provider state before updating the lock.
 
 For local OCI layouts, tinx reuses the layout path and does not try remote hydration.
 

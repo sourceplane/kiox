@@ -170,8 +170,12 @@ func runWorkspaceCommand(cmd *cobra.Command, root *rootOptions, command []string
 	if err != nil {
 		return err
 	}
+	return runPreparedWorkspaceCommand(cmd, target.Root, result, shellEnv, command)
+}
+
+func runPreparedWorkspaceCommand(cmd *cobra.Command, root string, result workspace.SyncResult, shellEnv workspace.ShellEnvironment, command []string) error {
 	runtimeOpts := cmdruntime.ShellOptions{
-		WorkingDir:  workspaceWorkingDir(target.Root),
+		WorkingDir:  workspaceWorkingDir(root),
 		Env:         shellEnv.Env,
 		PathEntries: shellEnv.PathEntries,
 		Stdout:      cmd.OutOrStdout(),
@@ -180,6 +184,13 @@ func runWorkspaceCommand(cmd *cobra.Command, root *rootOptions, command []string
 	}
 	if len(command) == 0 {
 		return cmdruntime.RunInteractiveShell(runtimeOpts)
+	}
+	if shellTarget, ok := shellEnv.Targets[command[0]]; ok {
+		providerKey := strings.TrimSpace(result.Aliases[shellTarget.Alias])
+		if providerKey == "" {
+			return fmt.Errorf("workspace alias %q is not installed", shellTarget.Alias)
+		}
+		return runWorkspaceToolCommand(cmd, root, result.Home, providerKey, shellTarget.Alias, shellTarget.Tool, command[1:], shellEnv.Env, shellEnv.PathEntries)
 	}
 	return cmdruntime.RunCommand(cmdruntime.ShellCommandOptions{
 		ShellOptions: runtimeOpts,

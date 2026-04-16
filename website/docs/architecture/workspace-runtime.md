@@ -21,8 +21,9 @@ During sync, tinx:
 1. loads the current `tinx.lock`
 2. resolves each provider source to a local OCI layout or registry reference
 3. decides whether to reuse the locked source or refresh it
-4. installs or refreshes provider metadata
-5. writes a new lock file and alias map
+4. activates matching provider metadata from the shared global store when available, otherwise installs or refreshes provider metadata
+5. ensures the current host runtime blobs exist in the shared store when the workspace needs a full remote install
+6. writes a new lock file and alias map
 
 ## Shell build phase
 
@@ -43,9 +44,10 @@ Key behaviors:
 - aliases are sorted before shell artifacts are written
 - provider environment variables must agree when they share a key
 - shims are written for both workspace aliases and tool `provides` entries
-- workspace shims call the hidden `tinx __shim` command, not the real tool binary directly
+- generated shims still call the hidden `tinx __shim` command, not the real tool binary directly
+- `tinx -- <command>` and `tinx exec <command>` can dispatch directly to a prepared workspace target instead of shelling back through a shim
 
-That last point is what makes lazy installation work. The workspace shell does not need to know whether a command is already installed.
+The shims are what make lazy installation work for shells and exported workspace `PATH`s. Direct dispatch is an optimization for tinx CLI entrypoints, not a separate execution model.
 
 ## PATH layout
 
@@ -57,7 +59,7 @@ The generated `PATH` is assembled in this order:
 
 That ensures a provider alias wins over host binaries with the same name.
 
-When a shim resolves a command, tinx can still add tool-specific binary directories for that single process.
+When tinx resolves a command through either a shim or direct dispatch, it can still add tool-specific binary directories for that single process.
 
 ## Working directory behavior
 
@@ -80,4 +82,4 @@ The workspace environment contains:
 
 If two providers export the same variable with different values, tinx fails rather than picking one silently.
 
-Tool-scoped environment resources are merged when the shim resolves the selected tool plan.
+Tool-scoped environment resources are merged when tinx resolves the selected tool plan.
