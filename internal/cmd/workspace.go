@@ -200,10 +200,7 @@ func useWorkspace(cmd *cobra.Command, root *rootOptions, reference string, comma
 	if err := requireReadyWorkspaceTarget(target); err != nil {
 		return err
 	}
-	result, err := workspace.Sync(cmd.Context(), target.Root, target.Config, workspace.SyncOptions{
-		Out:        cmd.ErrOrStderr(),
-		GlobalHome: globalHome,
-	})
+	result, err := prepareWorkspaceState(cmd.Context(), cmd.ErrOrStderr(), globalHome, target)
 	if err != nil {
 		return err
 	}

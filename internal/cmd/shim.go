@@ -59,9 +59,12 @@ func runShimCommand(cmd *cobra.Command, root *rootOptions, workspaceRoot, alias,
 	if globalHome == "" {
 		globalHome = strings.TrimSpace(root.Home)
 	}
-	result, err := workspace.Sync(cmd.Context(), discovery.Root, discovery.Config, workspace.SyncOptions{
-		Out:        cmd.ErrOrStderr(),
-		GlobalHome: globalHome,
+	result, err := prepareWorkspaceState(cmd.Context(), cmd.ErrOrStderr(), globalHome, &workspaceTarget{
+		Root:       discovery.Root,
+		ConfigPath: discovery.ConfigPath,
+		Config:     discovery.Config,
+		Name:       discovery.Config.Name(),
+		Status:     "ready",
 	})
 	if err != nil {
 		return err

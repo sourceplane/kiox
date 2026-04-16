@@ -513,6 +513,19 @@ func TestDashShortcutReusesCachedTaggedRegistryProvider(t *testing.T) {
 	if !strings.HasPrefix(lock.Providers[0].Resolved, registryHost+"/acme/lite-ci@sha256:") {
 		t.Fatalf("expected tagged provider to be pinned in the lockfile, got %q", lock.Providers[0].Resolved)
 	}
+	aliases, err := state.LoadAliases(workspacepkg.Home(workspaceRoot))
+	if err != nil {
+		t.Fatalf("load workspace aliases: %v", err)
+	}
+	meta, err := state.LoadProviderMetadataByKey(workspacepkg.Home(workspaceRoot), aliases["lite-ci"])
+	if err != nil {
+		t.Fatalf("load workspace provider metadata: %v", err)
+	}
+	for _, path := range []string{filepath.Join(meta.StorePath, "package.json"), filepath.Join(meta.StorePath, "tinx.yaml")} {
+		if err := os.Remove(path); err != nil {
+			t.Fatalf("remove cached package file %s: %v", path, err)
+		}
+	}
 
 	server.Close()
 
@@ -528,6 +541,12 @@ func TestDashShortcutReusesCachedTaggedRegistryProvider(t *testing.T) {
 	}
 	if strings.Contains(runBuf.String(), "using cached runtime") {
 		t.Fatalf("expected cached workspace execution to avoid repeated runtime cache logs, got: %s", runBuf.String())
+	}
+	if strings.Contains(runBuf.String(), "Installing providers (") {
+		t.Fatalf("expected prepared workspace execution to avoid provider sync output, got: %s", runBuf.String())
+	}
+	if strings.Contains(runBuf.String(), "Installed 1 providers") {
+		t.Fatalf("expected prepared workspace execution to avoid provider sync summary, got: %s", runBuf.String())
 	}
 }
 
@@ -744,6 +763,128 @@ func TestWorkspaceRegistryProvidersReuseGlobalStoreAcrossWorkspaces(t *testing.T
 	}
 	if metaOne.StorePath != metaTwo.StorePath {
 		t.Fatalf("expected shared store path, got %q and %q", metaOne.StorePath, metaTwo.StorePath)
+	}
+}
+
+func TestAddRemoteProviderUsesConciseSyncOutput(t *testing.T) {
+	tempDir := t.TempDir()
+	globalHome := filepath.Join(tempDir, ".tinx-global")
+	providerProject := createLiteCIProviderProject(t, filepath.Join(tempDir, "lite-ci-provider"))
+	workspaceRoot := filepath.Join(tempDir, "workspace")
+	server := httptest.NewServer(gcrregistry.New())
+	defer server.Close()
+	registryHost := strings.TrimPrefix(server.URL, "http://")
+	ref := registryHost + "/acme/lite-ci:v0.1.0"
+	releaseProviderRef(t, globalHome, providerProject, ref)
+
+	runRootCommand(t, []string{"--tinx-home", globalHome, "init", workspaceRoot})
+	addBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "add", ref, "as", "lite-ci", "--plain-http"})
+	output := addBuf.String()
+	for _, unexpected := range []string{
+		"checking local cache",
+		"pulling metadata layers",
+		"runtime pull complete",
+		"provider cached locally",
+		"queued ",
+		"copied ",
+	} {
+		if strings.Contains(output, unexpected) {
+			t.Fatalf("expected concise sync output without %q, got:\n%s", unexpected, output)
+		}
+	}
+	for _, expected := range []string{
+		"Installing providers (1)",
+		"acme/lite-ci",
+		"ready",
+		"Installed 1 providers",
+	} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("expected %q in concise sync output, got:\n%s", expected, output)
+		}
+	}
+}
+
+func TestInitWithLocalProviderShowsCompactProgressSurface(t *testing.T) {
+	tempDir := t.TempDir()
+	globalHome := filepath.Join(tempDir, ".tinx-global")
+	providerProject := createLiteCIProviderProject(t, filepath.Join(tempDir, "lite-ci-provider"))
+	layoutPath := releaseProviderLayout(t, globalHome, providerProject)
+	workspaceRoot := filepath.Join(tempDir, "workspace")
+
+	initBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "init", workspaceRoot, "-p", layoutPath, "as", "lite-ci"})
+	output := initBuf.String()
+	for _, expected := range []string{
+		"Installing providers (1)",
+		"acme/lite-ci",
+		"ready",
+		"Installed 1 providers",
+		"initialized workspace workspace",
+	} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("expected %q in init progress output, got:\n%s", expected, output)
+		}
+	}
+	for _, unexpected := range []string{"checking local cache", "pulling metadata layers", "queued ", "copied "} {
+		if strings.Contains(output, unexpected) {
+			t.Fatalf("expected compact init output without %q, got:\n%s", unexpected, output)
+		}
+	}
+}
+
+func TestSyncWithCachedRemoteProviderShowsCompactProgressSurface(t *testing.T) {
+	tempDir := t.TempDir()
+	globalHome := filepath.Join(tempDir, ".tinx-global")
+	providerProject := createLiteCIProviderProject(t, filepath.Join(tempDir, "lite-ci-provider"))
+	workspaceRoot := filepath.Join(tempDir, "workspace")
+	server := httptest.NewServer(gcrregistry.New())
+	defer server.Close()
+	registryHost := strings.TrimPrefix(server.URL, "http://")
+	ref := registryHost + "/acme/lite-ci:v0.1.0"
+	releaseProviderRef(t, globalHome, providerProject, ref)
+
+	runRootCommand(t, []string{"--tinx-home", globalHome, "init", workspaceRoot})
+	runRootCommand(t, []string{"--tinx-home", globalHome, "add", ref, "as", "lite-ci", "--plain-http"})
+	syncBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "sync"})
+	output := syncBuf.String()
+	for _, expected := range []string{
+		"Installing providers (1)",
+		"acme/lite-ci",
+		"cached",
+		"Installed 1 providers",
+		"synced workspace workspace",
+	} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("expected %q in sync progress output, got:\n%s", expected, output)
+		}
+	}
+	for _, unexpected := range []string{"checking local cache", "pulling metadata layers", "queued ", "copied "} {
+		if strings.Contains(output, unexpected) {
+			t.Fatalf("expected compact sync output without %q, got:\n%s", unexpected, output)
+		}
+	}
+}
+
+func TestSyncSummaryUsesShortWorkspacePaths(t *testing.T) {
+	tempDir := t.TempDir()
+	globalHome := filepath.Join(tempDir, ".tinx-global")
+	workspaceRoot := filepath.Join(tempDir, "workspace")
+
+	runRootCommand(t, []string{"--tinx-home", globalHome, "init", workspaceRoot})
+	t.Chdir(workspaceRoot)
+
+	syncBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "sync"})
+	output := syncBuf.String()
+	for _, expected := range []string{
+		"synced workspace workspace",
+		"manifest: tinx.yaml",
+		"home: workspace/",
+	} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("expected %q in sync summary output, got:\n%s", expected, output)
+		}
+	}
+	if strings.Contains(output, ".workspace") {
+		t.Fatalf("expected sync summary to hide internal workspace home, got:\n%s", output)
 	}
 }
 

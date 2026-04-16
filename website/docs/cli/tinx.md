@@ -23,6 +23,8 @@ Use the top-level shortcuts when you want shorter commands:
 - `tinx sync` to reconcile manual edits to `tinx.yaml`
 - `tinx ls` or `tinx list` for inventory
 
+`tinx init`, `tinx add`, and `tinx sync` use a compact provider progress surface by default. Pass `--verbose` to `tinx init` or `tinx sync` when you want phase-by-phase provider updates instead of the condensed live view.
+
 ## Execution entrypoints
 
 There are three normal ways to run workspace commands:

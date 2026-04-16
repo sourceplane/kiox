@@ -23,7 +23,9 @@ During sync, tinx:
 3. decides whether to reuse the locked source or refresh it
 4. activates matching provider metadata from the shared global store when available, otherwise installs or refreshes provider metadata
 5. ensures the current host runtime blobs exist in the shared store when the workspace needs a full remote install
-6. writes a new lock file and alias map
+6. fans out provider resolution and metadata installs in parallel while keeping alias and lock updates deterministic
+7. hydrates heavyweight remote runtime blobs with a smaller bounded concurrency so one sync does not oversubscribe the network
+8. writes a new lock file and alias map
 
 ## Shell build phase
 
@@ -48,6 +50,8 @@ Key behaviors:
 - `tinx -- <command>` and `tinx exec <command>` can dispatch directly to a prepared workspace target instead of shelling back through a shim
 
 The shims are what make lazy installation work for shells and exported workspace `PATH`s. Direct dispatch is an optimization for tinx CLI entrypoints, not a separate execution model.
+
+Workspace-facing commands keep sync output concise. tinx reports provider-level cache or install results rather than every internal registry and blob step during a normal workspace sync.
 
 ## PATH layout
 

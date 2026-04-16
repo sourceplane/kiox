@@ -24,6 +24,8 @@ That separation enables global caching, per-project isolation, and fast reuse ac
 
 If a second workspace resolves to the same provider digest, tinx can activate the cached shared-store metadata into that workspace and skip the registry pull entirely.
 
+When a workspace still needs multiple uncached providers, tinx can sync their metadata installs in parallel instead of serializing the whole workspace on one slow provider at a time.
+
 ## Lazy materialization
 
 The install and sync paths can work from metadata before a tool is materialized. That is enough to:
@@ -70,6 +72,8 @@ That avoids unnecessary work and prevents permission issues when previously cach
 Remote installs pull metadata first. tinx stores the manifest and normalized package data, then hydrates only the current host runtime blobs and shared archive layers when they are actually needed.
 
 Platform-qualified binary layer media types let tinx skip non-host OS and architecture blobs during the pull. If tinx has metadata and a stored remote reference but the required runtime blobs are missing, it can hydrate the local OCI store from the registry and retry extraction. That supports partial installs and resumed environments.
+
+Each registry pull also uses bounded blob-copy concurrency, and workspace sync hydrates remote runtimes with a smaller fan-out than metadata resolution. That keeps the CLI from overwhelming network bandwidth when several providers all need large runtime blobs at once.
 
 Hydration is the exception path, not the normal repeat-run path.
 

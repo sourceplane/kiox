@@ -792,13 +792,14 @@ func LoadPackageModel(meta state.ProviderMetadata) (core.Package, error) {
 	if storeRoot == "" {
 		return pkg, fmt.Errorf("provider store is missing for %s/%s@%s", meta.Namespace, meta.Name, meta.Version)
 	}
-	packagePath := filepath.Join(storeRoot, "package.json")
-	if data, err := os.ReadFile(packagePath); err == nil {
-		if err := json.Unmarshal(data, &pkg); err == nil {
-			pkg.Normalize()
-			if validateErr := pkg.Validate(); validateErr == nil {
-				return pkg, nil
-			}
+	if pkg, ok := loadCachedPackageJSON(filepath.Join(storeRoot, "package.json")); ok {
+		return pkg, nil
+	}
+	if layoutPath := strings.TrimSpace(meta.Source.LayoutPath); layoutPath != "" {
+		layoutPkg, _, _, manifestBytes, metadataBytes, err := readLayout(layoutPath, meta.Source.Tag)
+		if err == nil {
+			backfillCachedPackageFiles(meta, storeRoot, manifestBytes, metadataBytes)
+			return layoutPkg, nil
 		}
 	}
 	manifestBytes, err := os.ReadFile(filepath.Join(storeRoot, "tinx.yaml"))
@@ -810,6 +811,44 @@ func LoadPackageModel(meta state.ProviderMetadata) (core.Package, error) {
 		return pkg, err
 	}
 	return pkg, nil
+}
+
+func loadCachedPackageJSON(path string) (core.Package, bool) {
+	var pkg core.Package
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return pkg, false
+	}
+	if err := json.Unmarshal(data, &pkg); err != nil {
+		return core.Package{}, false
+	}
+	pkg.Normalize()
+	if err := pkg.Validate(); err != nil {
+		return core.Package{}, false
+	}
+	return pkg, true
+}
+
+func backfillCachedPackageFiles(meta state.ProviderMetadata, storeRoot string, manifestBytes, metadataBytes []byte) {
+	if strings.TrimSpace(meta.StorePath) == "" {
+		return
+	}
+	if len(metadataBytes) > 0 {
+		writeMissingCacheFile(filepath.Join(storeRoot, "package.json"), metadataBytes)
+	}
+	if len(manifestBytes) > 0 {
+		writeMissingCacheFile(filepath.Join(storeRoot, "tinx.yaml"), manifestBytes)
+	}
+}
+
+func writeMissingCacheFile(path string, data []byte) {
+	if len(data) == 0 {
+		return
+	}
+	if _, err := os.Stat(path); err == nil || !os.IsNotExist(err) {
+		return
+	}
+	_ = os.WriteFile(path, data, 0o644)
 }
 
 func platformMatches(platform core.PlatformSpec, goos, goarch string) bool {

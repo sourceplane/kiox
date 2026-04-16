@@ -7,11 +7,13 @@ import (
 	"os"
 	"path/filepath"
 	goruntime "runtime"
+	"strconv"
 	"strings"
 	"sync"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	oras "oras.land/oras-go/v2"
+	"oras.land/oras-go/v2/content"
 	ocistore "oras.land/oras-go/v2/content/oci"
 	"oras.land/oras-go/v2/registry/remote"
 	"oras.land/oras-go/v2/registry/remote/auth"
@@ -23,6 +25,11 @@ import (
 )
 
 const registryDockerAuthEnv = "TINX_REGISTRY_DOCKER_AUTH"
+
+const (
+	registryCopyConcurrencyEnv     = "TINX_REGISTRY_COPY_CONCURRENCY"
+	defaultRegistryCopyConcurrency = 2
+)
 
 func PushLayout(ctx context.Context, layoutPath, tag, ref string, plainHTTP bool) error {
 	store, err := ocistore.New(layoutPath)
@@ -51,9 +58,10 @@ type remoteInstallCandidate struct {
 }
 
 type RemoteInstallCache struct {
-	exactRefs    map[string][]remoteInstallCandidate
-	repoTags     map[string][]remoteInstallCandidate
-	runtimeBlobs map[string]bool
+	exactRefs         map[string][]remoteInstallCandidate
+	repoTags          map[string][]remoteInstallCandidate
+	runtimeBlobs      map[string]bool
+	runtimeBlobsMutex sync.Mutex
 }
 
 func LoadRemoteInstallCache(activationHome, storeHome string) (*RemoteInstallCache, error) {
@@ -134,14 +142,20 @@ func (cache *RemoteInstallCache) lookupCandidate(ref string, requireRuntimeBlobs
 }
 
 func InstallRemote(ctx context.Context, activationHome, storeHome, ref, alias string, plainHTTP bool, out io.Writer) (state.ProviderMetadata, error) {
+	return InstallRemoteMetadata(ctx, activationHome, storeHome, ref, alias, plainHTTP, true, out)
+}
+
+func InstallRemoteMetadata(ctx context.Context, activationHome, storeHome, ref, alias string, plainHTTP, allowCache bool, out io.Writer) (state.ProviderMetadata, error) {
 	tracker := progress.New(out)
 	defer tracker.Finish()
-	tracker.Step("lookup", fmt.Sprintf("checking local cache for %s", ref))
-	if cached, ok, err := cachedRemoteInstall(activationHome, storeHome, alias, ref, false, plainHTTP); err != nil {
-		return state.ProviderMetadata{}, err
-	} else if ok {
-		tracker.Cached("cache", fmt.Sprintf("using cached metadata %s/%s@%s", cached.Namespace, cached.Name, cached.Version))
-		return cached, nil
+	if allowCache {
+		tracker.Step("lookup", fmt.Sprintf("checking local cache for %s", ref))
+		if cached, ok, err := cachedRemoteInstall(activationHome, storeHome, alias, ref, false, plainHTTP); err != nil {
+			return state.ProviderMetadata{}, err
+		} else if ok {
+			tracker.Cached("cache", fmt.Sprintf("using cached metadata %s/%s@%s", cached.Namespace, cached.Name, cached.Version))
+			return cached, nil
+		}
 	}
 	return installRemote(ctx, activationHome, storeHome, ref, alias, plainHTTP, true, tracker)
 }
@@ -183,17 +197,36 @@ func installRemote(ctx context.Context, activationHome, storeHome, ref, alias st
 		tracker.Done("install", fmt.Sprintf("installed %s/%s@%s", meta.Namespace, meta.Name, meta.Version))
 		return meta, nil
 	}
-	if layoutHasRuntimeBlobs(meta.Source.LayoutPath, meta.Source.Tag) {
-		tracker.Cached("cache", fmt.Sprintf("reusing shared provider store %s/%s@%s", meta.Namespace, meta.Name, meta.Version))
-		tracker.Done("install", fmt.Sprintf("installed %s/%s@%s", meta.Namespace, meta.Name, meta.Version))
-		return meta, nil
-	}
-	if err := hydrateStoreFromRemote(ctx, meta.Source.LayoutPath, meta.Source.Ref, meta.Source.PlainHTTP, remoteCopySelection{goos: goruntime.GOOS, goarch: goruntime.GOARCH}, tracker, fmt.Sprintf("pulling %s/%s runtime layers", goruntime.GOOS, goruntime.GOARCH)); err != nil {
+	hydrated, err := ensureRemoteRuntime(ctx, meta, tracker)
+	if err != nil {
 		return state.ProviderMetadata{}, err
 	}
-	tracker.Done("download", "runtime pull complete")
+	if !hydrated {
+		tracker.Cached("cache", fmt.Sprintf("reusing shared provider store %s/%s@%s", meta.Namespace, meta.Name, meta.Version))
+	}
 	tracker.Done("install", fmt.Sprintf("installed %s/%s@%s", meta.Namespace, meta.Name, meta.Version))
 	return meta, nil
+}
+
+func EnsureRemoteRuntime(ctx context.Context, meta state.ProviderMetadata, out io.Writer) (bool, error) {
+	tracker := progress.New(out)
+	defer tracker.Finish()
+	return ensureRemoteRuntime(ctx, meta, tracker)
+}
+
+func ensureRemoteRuntime(ctx context.Context, meta state.ProviderMetadata, tracker *progress.Tracker) (bool, error) {
+	if layoutHasRuntimeBlobs(meta.Source.LayoutPath, meta.Source.Tag) {
+		return false, nil
+	}
+	if strings.TrimSpace(meta.Source.Ref) == "" {
+		return false, fmt.Errorf("provider %s/%s@%s has no remote source to hydrate", meta.Namespace, meta.Name, meta.Version)
+	}
+	detail := fmt.Sprintf("pulling %s/%s runtime layers", goruntime.GOOS, goruntime.GOARCH)
+	if err := hydrateStoreFromRemote(ctx, meta.Source.LayoutPath, meta.Source.Ref, meta.Source.PlainHTTP, remoteCopySelection{goos: goruntime.GOOS, goarch: goruntime.GOARCH}, tracker, detail); err != nil {
+		return false, err
+	}
+	tracker.Done("download", "runtime pull complete")
+	return true, nil
 }
 
 func formatBytes(size int64) string {
@@ -249,27 +282,24 @@ func pullRemoteLayout(ctx context.Context, layoutPath, ref string, plainHTTP boo
 	}
 	repo.PlainHTTP = plainHTTP
 	configureRepositoryAuth(repo)
+	copyConcurrency := remoteCopyConcurrency()
 	if tracker != nil && strings.TrimSpace(detail) != "" {
 		tracker.Info("download", detail)
 	}
-	var mu sync.Mutex
-	var downloadedCount int
-	var downloadedBytes int64
 	copyOptions := oras.DefaultCopyOptions
-	copyOptions.PreCopy = func(_ context.Context, descriptor ocispec.Descriptor) error {
-		if !shouldCopyDescriptor(descriptor, selection) {
-			return oras.SkipNode
+	copyOptions.Concurrency = copyConcurrency
+	copyOptions.FindSuccessors = func(ctx context.Context, fetcher content.Fetcher, desc ocispec.Descriptor) ([]ocispec.Descriptor, error) {
+		successors, err := content.Successors(ctx, fetcher, desc)
+		if err != nil {
+			return nil, err
 		}
-		if tracker != nil {
-			mu.Lock()
-			downloadedCount++
-			downloadedBytes += descriptor.Size
-			count := downloadedCount
-			bytes := downloadedBytes
-			mu.Unlock()
-			tracker.Info("download", fmt.Sprintf("%d blobs • %s", count, formatBytes(bytes)))
+		filtered := make([]ocispec.Descriptor, 0, len(successors))
+		for _, successor := range successors {
+			if shouldCopyDescriptor(successor, selection) {
+				filtered = append(filtered, successor)
+			}
 		}
-		return nil
+		return filtered, nil
 	}
 	if _, err := oras.Copy(ctx, repo, tag, store, tag, copyOptions); err != nil {
 		return fmt.Errorf("pull artifact: %w", err)
@@ -347,11 +377,16 @@ func (cache *RemoteInstallCache) hasRuntimeBlobs(meta state.ProviderMetadata) bo
 		return layoutHasRuntimeBlobs(meta.Source.LayoutPath, meta.Source.Tag)
 	}
 	key := storeCandidateKey(meta)
+	cache.runtimeBlobsMutex.Lock()
 	if ready, ok := cache.runtimeBlobs[key]; ok {
+		cache.runtimeBlobsMutex.Unlock()
 		return ready
 	}
+	cache.runtimeBlobsMutex.Unlock()
 	ready := layoutHasRuntimeBlobs(meta.Source.LayoutPath, meta.Source.Tag)
+	cache.runtimeBlobsMutex.Lock()
 	cache.runtimeBlobs[key] = ready
+	cache.runtimeBlobsMutex.Unlock()
 	return ready
 }
 
@@ -395,6 +430,10 @@ func dockerCredentialLookupEnabled() bool {
 	return envBoolDefault(registryDockerAuthEnv, goruntime.GOOS != "darwin")
 }
 
+func remoteCopyConcurrency() int {
+	return envPositiveIntDefault(registryCopyConcurrencyEnv, defaultRegistryCopyConcurrency)
+}
+
 func envBoolDefault(name string, defaultValue bool) bool {
 	raw := strings.ToLower(strings.TrimSpace(os.Getenv(name)))
 	switch raw {
@@ -407,6 +446,18 @@ func envBoolDefault(name string, defaultValue bool) bool {
 	default:
 		return defaultValue
 	}
+}
+
+func envPositiveIntDefault(name string, defaultValue int) int {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return defaultValue
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return defaultValue
+	}
+	return value
 }
 
 func resolveRegistryCredential(ctx context.Context, hostport string, dockerCredResolver auth.CredentialFunc) (auth.Credential, error) {

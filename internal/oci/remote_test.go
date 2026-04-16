@@ -26,6 +26,21 @@ func TestDockerCredentialLookupEnabledDefaultsByPlatform(t *testing.T) {
 	}
 }
 
+func TestRemoteCopyConcurrencyHonorsOverride(t *testing.T) {
+	t.Setenv(registryCopyConcurrencyEnv, "")
+	if got := remoteCopyConcurrency(); got != defaultRegistryCopyConcurrency {
+		t.Fatalf("remoteCopyConcurrency() = %d, want %d", got, defaultRegistryCopyConcurrency)
+	}
+	t.Setenv(registryCopyConcurrencyEnv, "9")
+	if got := remoteCopyConcurrency(); got != 9 {
+		t.Fatalf("remoteCopyConcurrency() = %d, want 9", got)
+	}
+	t.Setenv(registryCopyConcurrencyEnv, "bad")
+	if got := remoteCopyConcurrency(); got != defaultRegistryCopyConcurrency {
+		t.Fatalf("remoteCopyConcurrency() = %d, want %d", got, defaultRegistryCopyConcurrency)
+	}
+}
+
 func TestDockerCredentialLookupEnabledHonorsOverride(t *testing.T) {
 	tests := []struct {
 		name  string
