@@ -94,7 +94,7 @@ func runRemoveProviderCommand(cmd *cobra.Command, root *rootOptions, selector st
 	desiredConfig.Providers = providers
 	desiredConfig.Spec.Providers = nil
 	_ = ref
-	result, manifestPath, err := applyWorkspaceConfigChange(cmd.Context(), cmd.ErrOrStderr(), globalHome, target, desiredConfig)
+	_, manifestPath, err := applyWorkspaceConfigChange(cmd.Context(), cmd.ErrOrStderr(), globalHome, target, desiredConfig, false)
 	if err != nil {
 		return err
 	}
@@ -102,8 +102,8 @@ func runRemoveProviderCommand(cmd *cobra.Command, root *rootOptions, selector st
 		return err
 	}
 	writeLine(cmd.OutOrStdout(), "removed provider %s", alias)
-	writeLine(cmd.OutOrStdout(), "manifest: %s", manifestPath)
-	writeLine(cmd.OutOrStdout(), "home: %s", result.Home)
+	writeLine(cmd.OutOrStdout(), "manifest: %s", displayWorkspaceSummaryFilePath(manifestPath))
+	writeLine(cmd.OutOrStdout(), "home: %s", displayWorkspaceSummaryDirPath(target.Root))
 	return nil
 }
 
@@ -142,7 +142,7 @@ func runUpdateProviderCommand(cmd *cobra.Command, root *rootOptions, selectors [
 			return err
 		}
 	}
-	result, err := workspace.Sync(cmd.Context(), target.Root, target.Config, workspace.SyncOptions{Out: cmd.ErrOrStderr(), GlobalHome: globalHome, RefreshAliases: aliasesToRefresh})
+	_, err = workspace.Sync(cmd.Context(), target.Root, target.Config, workspace.SyncOptions{Out: cmd.ErrOrStderr(), GlobalHome: globalHome, RefreshAliases: aliasesToRefresh})
 	if err != nil {
 		return err
 	}
@@ -151,7 +151,7 @@ func runUpdateProviderCommand(cmd *cobra.Command, root *rootOptions, selectors [
 	}
 	sort.Strings(aliasesToRefresh)
 	writeLine(cmd.OutOrStdout(), "updated providers: %s", strings.Join(aliasesToRefresh, ", "))
-	writeLine(cmd.OutOrStdout(), "home: %s", result.Home)
+	writeLine(cmd.OutOrStdout(), "home: %s", displayWorkspaceSummaryDirPath(target.Root))
 	return nil
 }
 

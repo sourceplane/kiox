@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http/httptest"
 	"os"
@@ -12,7 +13,9 @@ import (
 	"testing"
 
 	gcrregistry "github.com/google/go-containerregistry/pkg/registry"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
+	internaloci "github.com/sourceplane/tinx/internal/oci"
 	"github.com/sourceplane/tinx/internal/state"
 	workspacepkg "github.com/sourceplane/tinx/internal/workspace"
 )
@@ -510,6 +513,19 @@ func TestDashShortcutReusesCachedTaggedRegistryProvider(t *testing.T) {
 	if !strings.HasPrefix(lock.Providers[0].Resolved, registryHost+"/acme/lite-ci@sha256:") {
 		t.Fatalf("expected tagged provider to be pinned in the lockfile, got %q", lock.Providers[0].Resolved)
 	}
+	aliases, err := state.LoadAliases(workspacepkg.Home(workspaceRoot))
+	if err != nil {
+		t.Fatalf("load workspace aliases: %v", err)
+	}
+	meta, err := state.LoadProviderMetadataByKey(workspacepkg.Home(workspaceRoot), aliases["lite-ci"])
+	if err != nil {
+		t.Fatalf("load workspace provider metadata: %v", err)
+	}
+	for _, path := range []string{filepath.Join(meta.StorePath, "package.json"), filepath.Join(meta.StorePath, "tinx.yaml")} {
+		if err := os.Remove(path); err != nil {
+			t.Fatalf("remove cached package file %s: %v", path, err)
+		}
+	}
 
 	server.Close()
 
@@ -519,6 +535,18 @@ func TestDashShortcutReusesCachedTaggedRegistryProvider(t *testing.T) {
 	}
 	if !strings.Contains(runBuf.String(), "lite-ci-args=plan") {
 		t.Fatalf("expected cached command args, got: %s", runBuf.String())
+	}
+	if strings.Contains(runBuf.String(), "checking local cache") {
+		t.Fatalf("expected cached workspace execution to stay quiet, got: %s", runBuf.String())
+	}
+	if strings.Contains(runBuf.String(), "using cached runtime") {
+		t.Fatalf("expected cached workspace execution to avoid repeated runtime cache logs, got: %s", runBuf.String())
+	}
+	if strings.Contains(runBuf.String(), "Installing providers (") {
+		t.Fatalf("expected prepared workspace execution to avoid provider sync output, got: %s", runBuf.String())
+	}
+	if strings.Contains(runBuf.String(), "Installed 1 providers") {
+		t.Fatalf("expected prepared workspace execution to avoid provider sync summary, got: %s", runBuf.String())
 	}
 }
 
@@ -694,6 +722,221 @@ func TestWorkspaceProvidersReuseGlobalStoreAcrossWorkspaces(t *testing.T) {
 	}
 	if len(storeEntries) != 1 {
 		t.Fatalf("expected one shared store entry, got %d", len(storeEntries))
+	}
+}
+
+func TestWorkspaceRegistryProvidersReuseGlobalStoreAcrossWorkspaces(t *testing.T) {
+	tempDir := t.TempDir()
+	globalHome := filepath.Join(tempDir, ".tinx-global")
+	providerProject := createLiteCIProviderProject(t, filepath.Join(tempDir, "lite-ci-provider"))
+	workspaceOne := filepath.Join(tempDir, "workspace-one")
+	workspaceTwo := filepath.Join(tempDir, "workspace-two")
+	server := httptest.NewServer(gcrregistry.New())
+	registryHost := strings.TrimPrefix(server.URL, "http://")
+	ref := registryHost + "/acme/lite-ci:v0.1.0"
+	releaseProviderRef(t, globalHome, providerProject, ref)
+
+	runRootCommand(t, []string{"--tinx-home", globalHome, "init", workspaceOne})
+	runRootCommand(t, []string{"--tinx-home", globalHome, "add", ref, "as", "lite-ci", "--plain-http"})
+
+	server.Close()
+
+	runRootCommand(t, []string{"--tinx-home", globalHome, "init", workspaceTwo})
+	secondBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "add", ref, "as", "lite-ci", "--plain-http"})
+	if strings.Contains(secondBuf.String(), "pulling metadata layers") {
+		t.Fatalf("expected second workspace to reuse the global store without a registry pull, got: %s", secondBuf.String())
+	}
+
+	metaOne, err := state.LoadProviderMetadata(filepath.Join(workspaceOne, ".workspace"), "acme", "lite-ci", "v0.1.0")
+	if err != nil {
+		t.Fatalf("load workspace one provider metadata: %v", err)
+	}
+	metaTwo, err := state.LoadProviderMetadata(filepath.Join(workspaceTwo, ".workspace"), "acme", "lite-ci", "v0.1.0")
+	if err != nil {
+		t.Fatalf("load workspace two provider metadata: %v", err)
+	}
+	if metaOne.StoreID == "" || metaOne.StorePath == "" {
+		t.Fatalf("expected workspace one provider to reference the global store, got %#v", metaOne)
+	}
+	if metaOne.StoreID != metaTwo.StoreID {
+		t.Fatalf("expected shared store id, got %q and %q", metaOne.StoreID, metaTwo.StoreID)
+	}
+	if metaOne.StorePath != metaTwo.StorePath {
+		t.Fatalf("expected shared store path, got %q and %q", metaOne.StorePath, metaTwo.StorePath)
+	}
+}
+
+func TestAddRemoteProviderUsesConciseSyncOutput(t *testing.T) {
+	tempDir := t.TempDir()
+	globalHome := filepath.Join(tempDir, ".tinx-global")
+	providerProject := createLiteCIProviderProject(t, filepath.Join(tempDir, "lite-ci-provider"))
+	workspaceRoot := filepath.Join(tempDir, "workspace")
+	server := httptest.NewServer(gcrregistry.New())
+	defer server.Close()
+	registryHost := strings.TrimPrefix(server.URL, "http://")
+	ref := registryHost + "/acme/lite-ci:v0.1.0"
+	releaseProviderRef(t, globalHome, providerProject, ref)
+
+	runRootCommand(t, []string{"--tinx-home", globalHome, "init", workspaceRoot})
+	addBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "add", ref, "as", "lite-ci", "--plain-http"})
+	output := addBuf.String()
+	for _, unexpected := range []string{
+		"checking local cache",
+		"pulling metadata layers",
+		"runtime pull complete",
+		"provider cached locally",
+		"queued ",
+		"copied ",
+	} {
+		if strings.Contains(output, unexpected) {
+			t.Fatalf("expected concise sync output without %q, got:\n%s", unexpected, output)
+		}
+	}
+	for _, expected := range []string{
+		"Installing providers (1)",
+		"acme/lite-ci",
+		"ready",
+		"Installed 1 providers",
+	} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("expected %q in concise sync output, got:\n%s", expected, output)
+		}
+	}
+}
+
+func TestInitWithLocalProviderShowsCompactProgressSurface(t *testing.T) {
+	tempDir := t.TempDir()
+	globalHome := filepath.Join(tempDir, ".tinx-global")
+	providerProject := createLiteCIProviderProject(t, filepath.Join(tempDir, "lite-ci-provider"))
+	layoutPath := releaseProviderLayout(t, globalHome, providerProject)
+	workspaceRoot := filepath.Join(tempDir, "workspace")
+
+	initBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "init", workspaceRoot, "-p", layoutPath, "as", "lite-ci"})
+	output := initBuf.String()
+	for _, expected := range []string{
+		"Installing providers (1)",
+		"acme/lite-ci",
+		"ready",
+		"Installed 1 providers",
+		"initialized workspace workspace",
+	} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("expected %q in init progress output, got:\n%s", expected, output)
+		}
+	}
+	for _, unexpected := range []string{"checking local cache", "pulling metadata layers", "queued ", "copied "} {
+		if strings.Contains(output, unexpected) {
+			t.Fatalf("expected compact init output without %q, got:\n%s", unexpected, output)
+		}
+	}
+}
+
+func TestSyncWithCachedRemoteProviderShowsCompactProgressSurface(t *testing.T) {
+	tempDir := t.TempDir()
+	globalHome := filepath.Join(tempDir, ".tinx-global")
+	providerProject := createLiteCIProviderProject(t, filepath.Join(tempDir, "lite-ci-provider"))
+	workspaceRoot := filepath.Join(tempDir, "workspace")
+	server := httptest.NewServer(gcrregistry.New())
+	defer server.Close()
+	registryHost := strings.TrimPrefix(server.URL, "http://")
+	ref := registryHost + "/acme/lite-ci:v0.1.0"
+	releaseProviderRef(t, globalHome, providerProject, ref)
+
+	runRootCommand(t, []string{"--tinx-home", globalHome, "init", workspaceRoot})
+	runRootCommand(t, []string{"--tinx-home", globalHome, "add", ref, "as", "lite-ci", "--plain-http"})
+	syncBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "sync"})
+	output := syncBuf.String()
+	for _, expected := range []string{
+		"Installing providers (1)",
+		"acme/lite-ci",
+		"cached",
+		"Installed 1 providers",
+		"synced workspace workspace",
+	} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("expected %q in sync progress output, got:\n%s", expected, output)
+		}
+	}
+	for _, unexpected := range []string{"checking local cache", "pulling metadata layers", "queued ", "copied "} {
+		if strings.Contains(output, unexpected) {
+			t.Fatalf("expected compact sync output without %q, got:\n%s", unexpected, output)
+		}
+	}
+}
+
+func TestSyncSummaryUsesShortWorkspacePaths(t *testing.T) {
+	tempDir := t.TempDir()
+	globalHome := filepath.Join(tempDir, ".tinx-global")
+	workspaceRoot := filepath.Join(tempDir, "workspace")
+
+	runRootCommand(t, []string{"--tinx-home", globalHome, "init", workspaceRoot})
+	t.Chdir(workspaceRoot)
+
+	syncBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "sync"})
+	output := syncBuf.String()
+	for _, expected := range []string{
+		"synced workspace workspace",
+		"manifest: tinx.yaml",
+		"home: workspace/",
+	} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("expected %q in sync summary output, got:\n%s", expected, output)
+		}
+	}
+	if strings.Contains(output, ".workspace") {
+		t.Fatalf("expected sync summary to hide internal workspace home, got:\n%s", output)
+	}
+}
+
+func TestRegistryInstallCachesCurrentPlatformBlobsOnly(t *testing.T) {
+	tempDir := t.TempDir()
+	globalHome := filepath.Join(tempDir, ".tinx-global")
+	providerDir := filepath.Join(tempDir, "setup-kubectl-provider")
+	if err := copyTree(filepath.Join("..", "..", "testdata", "setup-kubectl"), providerDir); err != nil {
+		t.Fatalf("copy setup-kubectl provider: %v", err)
+	}
+	workspaceRoot := filepath.Join(tempDir, "workspace")
+	server := httptest.NewServer(gcrregistry.New())
+	defer server.Close()
+	registryHost := strings.TrimPrefix(server.URL, "http://")
+	ref := registryHost + "/acme/setup-kubectl:v0.1.0"
+	releaseProviderRef(t, globalHome, providerDir, ref)
+
+	runRootCommand(t, []string{"--tinx-home", globalHome, "init", workspaceRoot})
+	runRootCommand(t, []string{"--tinx-home", globalHome, "add", ref, "as", "setup-kubectl", "--plain-http"})
+
+	meta, err := state.LoadProviderMetadata(filepath.Join(workspaceRoot, ".workspace"), "acme", "setup-kubectl", "v0.1.0")
+	if err != nil {
+		t.Fatalf("load workspace provider metadata: %v", err)
+	}
+	manifest := loadStoreImageManifest(t, filepath.Join(meta.StorePath, "oci"))
+	hostPlatform := goruntime.GOOS + "/" + goruntime.GOARCH
+	foundHostBinary := false
+	foundSkippedBinary := false
+	for _, layer := range manifest.Layers {
+		platform := strings.TrimSpace(layer.Annotations["io.tinx.platform"])
+		if platform == "" {
+			continue
+		}
+		blobPath := filepath.Join(meta.StorePath, "oci", "blobs", "sha256", layer.Digest.Encoded())
+		_, err := os.Stat(blobPath)
+		if platform == hostPlatform {
+			foundHostBinary = true
+			if err != nil {
+				t.Fatalf("expected host platform blob %s to be cached: %v", platform, err)
+			}
+			continue
+		}
+		foundSkippedBinary = true
+		if !os.IsNotExist(err) {
+			t.Fatalf("expected non-host platform blob %s to be absent from the local cache, stat=%v", platform, err)
+		}
+	}
+	if !foundHostBinary {
+		t.Fatalf("expected a cached host platform binary for %s", hostPlatform)
+	}
+	if !foundSkippedBinary {
+		t.Fatal("expected at least one non-host platform blob to validate selective caching")
 	}
 }
 
@@ -1057,6 +1300,32 @@ func releaseProviderRef(t *testing.T, home, providerDir, ref string) {
 	if !bytes.Contains(buf.Bytes(), []byte("pushed "+ref)) {
 		t.Fatalf("unexpected release output: %s", buf.String())
 	}
+}
+
+func loadStoreImageManifest(t *testing.T, layoutPath string) internaloci.ImageManifest {
+	t.Helper()
+	indexBytes, err := os.ReadFile(filepath.Join(layoutPath, "index.json"))
+	if err != nil {
+		t.Fatalf("read store index.json: %v", err)
+	}
+	var index struct {
+		Manifests []ocispec.Descriptor `json:"manifests"`
+	}
+	if err := json.Unmarshal(indexBytes, &index); err != nil {
+		t.Fatalf("decode store index.json: %v", err)
+	}
+	if len(index.Manifests) == 0 {
+		t.Fatal("expected cached OCI layout to contain a manifest descriptor")
+	}
+	manifestBytes, err := os.ReadFile(filepath.Join(layoutPath, "blobs", "sha256", index.Manifests[0].Digest.Encoded()))
+	if err != nil {
+		t.Fatalf("read cached image manifest: %v", err)
+	}
+	var manifest internaloci.ImageManifest
+	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
+		t.Fatalf("decode cached image manifest: %v", err)
+	}
+	return manifest
 }
 
 func manifestEnvName(name string) string {

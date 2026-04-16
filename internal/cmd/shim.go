@@ -59,9 +59,12 @@ func runShimCommand(cmd *cobra.Command, root *rootOptions, workspaceRoot, alias,
 	if globalHome == "" {
 		globalHome = strings.TrimSpace(root.Home)
 	}
-	result, err := workspace.Sync(cmd.Context(), discovery.Root, discovery.Config, workspace.SyncOptions{
-		Out:        cmd.ErrOrStderr(),
-		GlobalHome: globalHome,
+	result, err := prepareWorkspaceState(cmd.Context(), cmd.ErrOrStderr(), globalHome, &workspaceTarget{
+		Root:       discovery.Root,
+		ConfigPath: discovery.ConfigPath,
+		Config:     discovery.Config,
+		Name:       discovery.Config.Name(),
+		Status:     "ready",
 	})
 	if err != nil {
 		return err
@@ -70,7 +73,11 @@ func runShimCommand(cmd *cobra.Command, root *rootOptions, workspaceRoot, alias,
 	if providerKey == "" {
 		return fmt.Errorf("workspace alias %q is not installed", alias)
 	}
-	meta, err := state.LoadProviderMetadataByKey(result.Home, providerKey)
+	return runWorkspaceToolCommand(cmd, discovery.Root, result.Home, providerKey, alias, toolName, args, nil, nil)
+}
+
+func runWorkspaceToolCommand(cmd *cobra.Command, workspaceRoot, home, providerKey, alias, toolName string, args []string, baseEnv map[string]string, basePathEntries []string) error {
+	meta, err := state.LoadProviderMetadataByKey(home, providerKey)
 	if err != nil {
 		return err
 	}
@@ -96,24 +103,26 @@ func runShimCommand(cmd *cobra.Command, root *rootOptions, workspaceRoot, alias,
 	accumulatedEnv := map[string]string{}
 	accumulatedPaths := []string{}
 	resolvedByTool := map[string]truntime.ResolvedTool{}
-	workingDir := workspaceWorkingDir(discovery.Root)
+	workingDir := workspaceWorkingDir(workspaceRoot)
 
 	for _, tool := range plan {
 		plugin, err := registry.MustGet(tool.Spec.Runtime.Type)
 		if err != nil {
 			return err
 		}
+		effectiveEnv := overlayWorkspaceEnvironment(baseEnv, accumulatedEnv)
+		effectivePaths := overlayWorkspacePaths(basePathEntries, accumulatedPaths)
 		toolCtx := truntime.Context{
-			Home:          result.Home,
-			WorkspaceRoot: discovery.Root,
+			Home:          home,
+			WorkspaceRoot: workspaceRoot,
 			Alias:         alias,
 			Metadata:      meta,
 			Package:       pkg,
 			GoOS:          goruntime.GOOS,
 			GoArch:        goruntime.GOARCH,
 			WorkingDir:    workingDir,
-			Env:           accumulatedEnv,
-			PathEntries:   accumulatedPaths,
+			Env:           effectiveEnv,
+			PathEntries:   effectivePaths,
 			Stdout:        cmd.OutOrStdout(),
 			Stderr:        cmd.ErrOrStderr(),
 			Stdin:         os.Stdin,
@@ -123,8 +132,8 @@ func runShimCommand(cmd *cobra.Command, root *rootOptions, workspaceRoot, alias,
 			return err
 		}
 		toolEnv, toolPaths, err := truntime.ResolveProviderEnvironment(truntime.ProviderEnvironmentSpec{
-			Home:          result.Home,
-			WorkspaceRoot: discovery.Root,
+			Home:          home,
+			WorkspaceRoot: workspaceRoot,
 			Alias:         alias,
 			ToolName:      tool.Metadata.Name,
 			BinaryPath:    resolved.BinaryPath,
@@ -140,8 +149,8 @@ func runShimCommand(cmd *cobra.Command, root *rootOptions, workspaceRoot, alias,
 		if binaryDir := filepath.Dir(strings.TrimSpace(resolved.BinaryPath)); binaryDir != "" && binaryDir != "." {
 			accumulatedPaths = appendShimPaths(accumulatedPaths, binaryDir)
 		}
-		toolCtx.Env = accumulatedEnv
-		toolCtx.PathEntries = accumulatedPaths
+		toolCtx.Env = overlayWorkspaceEnvironment(baseEnv, accumulatedEnv)
+		toolCtx.PathEntries = overlayWorkspacePaths(basePathEntries, accumulatedPaths)
 		installed, err := plugin.IsInstalled(resolved, toolCtx)
 		if err != nil {
 			return err
@@ -160,16 +169,16 @@ func runShimCommand(cmd *cobra.Command, root *rootOptions, workspaceRoot, alias,
 		return err
 	}
 	return targetPlugin.Execute(targetResolved, args, truntime.Context{
-		Home:          result.Home,
-		WorkspaceRoot: discovery.Root,
+		Home:          home,
+		WorkspaceRoot: workspaceRoot,
 		Alias:         alias,
 		Metadata:      meta,
 		Package:       pkg,
 		GoOS:          goruntime.GOOS,
 		GoArch:        goruntime.GOARCH,
 		WorkingDir:    workingDir,
-		Env:           accumulatedEnv,
-		PathEntries:   accumulatedPaths,
+		Env:           overlayWorkspaceEnvironment(baseEnv, accumulatedEnv),
+		PathEntries:   overlayWorkspacePaths(basePathEntries, accumulatedPaths),
 		Stdout:        cmd.OutOrStdout(),
 		Stderr:        cmd.ErrOrStderr(),
 		Stdin:         os.Stdin,
@@ -259,4 +268,26 @@ func appendShimPaths(existing []string, values ...string) []string {
 		result = append(result, trimmed)
 	}
 	return result
+}
+
+func overlayWorkspaceEnvironment(base, overlay map[string]string) map[string]string {
+	if len(base) == 0 && len(overlay) == 0 {
+		return nil
+	}
+	merged := make(map[string]string, len(base)+len(overlay))
+	for key, value := range base {
+		merged[key] = value
+	}
+	for key, value := range overlay {
+		merged[key] = value
+	}
+	return merged
+}
+
+func overlayWorkspacePaths(base, overlay []string) []string {
+	if len(base) == 0 && len(overlay) == 0 {
+		return nil
+	}
+	combined := append([]string(nil), base...)
+	return appendShimPaths(combined, overlay...)
 }

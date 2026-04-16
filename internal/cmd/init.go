@@ -21,6 +21,7 @@ type initCommandInput struct {
 	Target    string
 	Providers []initProviderSpec
 	ShowHelp  bool
+	Verbose   bool
 }
 
 func newInitCommand(root *rootOptions) *cobra.Command {
@@ -51,7 +52,7 @@ func runInitCommand(cmd *cobra.Command, root *rootOptions, args []string, defaul
 	if err != nil {
 		return err
 	}
-	result, manifestPath, err := applyWorkspaceConfigChange(cmd.Context(), cmd.ErrOrStderr(), globalHome, target, target.Config)
+	_, manifestPath, err := applyWorkspaceConfigChange(cmd.Context(), cmd.ErrOrStderr(), globalHome, target, target.Config, input.Verbose)
 	if err != nil {
 		return err
 	}
@@ -63,27 +64,26 @@ func runInitCommand(cmd *cobra.Command, root *rootOptions, args []string, defaul
 	}
 	writeLine(cmd.OutOrStdout(), "initialized workspace %s", target.Config.Name())
 	writeLine(cmd.OutOrStdout(), "active workspace: %s", target.Config.Name())
-	writeLine(cmd.OutOrStdout(), "manifest: %s", manifestPath)
-	writeLine(cmd.OutOrStdout(), "home: %s", result.Home)
+	writeLine(cmd.OutOrStdout(), "manifest: %s", displayWorkspaceSummaryFilePath(manifestPath))
+	writeLine(cmd.OutOrStdout(), "home: %s", displayWorkspaceSummaryDirPath(target.Root))
 	return nil
 }
 
 func parseInitCommandArgs(args []string, defaultTarget string) (initCommandInput, error) {
-	input := initCommandInput{}
+	input := initCommandInput{Target: defaultTarget}
 	if len(args) == 0 {
-		input.Target = defaultTarget
 		return input, nil
 	}
-	for _, arg := range args {
-		if arg == "-h" || arg == "--help" || arg == "help" {
-			input.ShowHelp = true
-			return input, nil
-		}
-	}
-	input.Target = args[0]
-	for index := 1; index < len(args); {
+	targetSet := false
+	for index := 0; index < len(args); {
 		arg := args[index]
 		switch {
+		case arg == "-h" || arg == "--help" || arg == "help":
+			input.ShowHelp = true
+			return input, nil
+		case arg == "-v" || arg == "--verbose":
+			input.Verbose = true
+			index++
 		case arg == "-p" || arg == "--provider":
 			if index+1 >= len(args) {
 				return initCommandInput{}, fmt.Errorf("missing provider source after %s", arg)
@@ -103,6 +103,10 @@ func parseInitCommandArgs(args []string, defaultTarget string) (initCommandInput
 			index++
 		case strings.HasPrefix(arg, "-p="):
 			input.Providers = append(input.Providers, initProviderSpec{Source: strings.TrimPrefix(arg, "-p=")})
+			index++
+		case !targetSet:
+			input.Target = arg
+			targetSet = true
 			index++
 		default:
 			return initCommandInput{}, fmt.Errorf("unexpected argument %q", arg)

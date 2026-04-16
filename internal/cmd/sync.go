@@ -7,25 +7,29 @@ import (
 )
 
 func newSyncCommand(root *rootOptions) *cobra.Command {
+	var verbose bool
+
 	cmd := &cobra.Command{
 		Use:   "sync",
 		Short: "Reconcile workspace state from tinx.yaml",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSyncCommand(cmd, root)
+			return runSyncCommand(cmd, root, verbose)
 		},
 	}
+	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "show detailed provider sync progress")
 	return cmd
 }
 
-func runSyncCommand(cmd *cobra.Command, root *rootOptions) error {
+func runSyncCommand(cmd *cobra.Command, root *rootOptions, verbose bool) error {
 	globalHome, target, err := resolveRequiredWorkspaceTarget(cmd, root)
 	if err != nil {
 		return err
 	}
-	result, err := workspace.Sync(cmd.Context(), target.Root, target.Config, workspace.SyncOptions{
+	_, err = workspace.Sync(cmd.Context(), target.Root, target.Config, workspace.SyncOptions{
 		Out:        cmd.ErrOrStderr(),
 		GlobalHome: globalHome,
+		Verbose:    verbose,
 	})
 	if err != nil {
 		return err
@@ -34,7 +38,7 @@ func runSyncCommand(cmd *cobra.Command, root *rootOptions) error {
 		return err
 	}
 	writeLine(cmd.OutOrStdout(), "synced workspace %s", target.DisplayName())
-	writeLine(cmd.OutOrStdout(), "manifest: %s", workspace.ManifestPath(target.Root))
-	writeLine(cmd.OutOrStdout(), "home: %s", result.Home)
+	writeLine(cmd.OutOrStdout(), "manifest: %s", displayWorkspaceSummaryFilePath(workspace.ManifestPath(target.Root)))
+	writeLine(cmd.OutOrStdout(), "home: %s", displayWorkspaceSummaryDirPath(target.Root))
 	return nil
 }

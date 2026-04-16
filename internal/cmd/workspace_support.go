@@ -66,6 +66,52 @@ func (target *workspaceTarget) MissingError() error {
 	return fmt.Errorf("workspace %q is missing: root %s no longer exists; run tinx workspace delete %q to unregister it", name, displayInventoryPath(target.Root), target.DeleteReference())
 }
 
+func displayWorkspaceSummaryFilePath(path string) string {
+	return displayWorkspaceSummaryPath(path, false)
+}
+
+func displayWorkspaceSummaryDirPath(path string) string {
+	return displayWorkspaceSummaryPath(path, true)
+}
+
+func displayWorkspaceSummaryPath(path string, directory bool) string {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return "-"
+	}
+	if directory {
+		absPath, absErr := filepath.Abs(trimmed)
+		cwd, cwdErr := os.Getwd()
+		if absErr == nil && cwdErr == nil {
+			absCWD, absCWDErr := filepath.Abs(cwd)
+			if absCWDErr == nil && filepath.Clean(absPath) == filepath.Clean(absCWD) {
+				base := filepath.Base(absPath)
+				if base == "." || base == string(os.PathSeparator) || base == "" {
+					return "." + string(os.PathSeparator)
+				}
+				return base + string(os.PathSeparator)
+			}
+		}
+	}
+	display := displayInventoryPath(trimmed)
+	prefix := "." + string(os.PathSeparator)
+	display = strings.TrimPrefix(display, prefix)
+	if !directory {
+		return display
+	}
+	if display == "." {
+		base := filepath.Base(filepath.Clean(trimmed))
+		if base == "." || base == string(os.PathSeparator) || base == "" {
+			return "." + string(os.PathSeparator)
+		}
+		return base + string(os.PathSeparator)
+	}
+	if display != "-" && !strings.HasSuffix(display, string(os.PathSeparator)) {
+		display += string(os.PathSeparator)
+	}
+	return display
+}
+
 func executeCLI(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	commandCtx := defaultCommandContext(ctx)
 	parsedRoot, strippedArgs, err := extractRootArgs(args)
@@ -156,10 +202,7 @@ func runWorkspaceCommand(cmd *cobra.Command, root *rootOptions, command []string
 	if err := requireReadyWorkspaceTarget(target); err != nil {
 		return err
 	}
-	result, err := workspace.Sync(commandCtx, target.Root, target.Config, workspace.SyncOptions{
-		Out:        cmd.ErrOrStderr(),
-		GlobalHome: globalHome,
-	})
+	result, err := prepareWorkspaceState(commandCtx, cmd.ErrOrStderr(), globalHome, target)
 	if err != nil {
 		return err
 	}
@@ -170,8 +213,27 @@ func runWorkspaceCommand(cmd *cobra.Command, root *rootOptions, command []string
 	if err != nil {
 		return err
 	}
+	return runPreparedWorkspaceCommand(cmd, target.Root, result, shellEnv, command)
+}
+
+func prepareWorkspaceState(ctx context.Context, out io.Writer, globalHome string, target *workspaceTarget) (workspace.SyncResult, error) {
+	if target == nil {
+		return workspace.SyncResult{}, fmt.Errorf("workspace target is required")
+	}
+	if prepared, ok, err := workspace.LoadPreparedState(target.Root, target.Config); err != nil {
+		return workspace.SyncResult{}, err
+	} else if ok {
+		return prepared, nil
+	}
+	return workspace.Sync(ctx, target.Root, target.Config, workspace.SyncOptions{
+		Out:        out,
+		GlobalHome: globalHome,
+	})
+}
+
+func runPreparedWorkspaceCommand(cmd *cobra.Command, root string, result workspace.SyncResult, shellEnv workspace.ShellEnvironment, command []string) error {
 	runtimeOpts := cmdruntime.ShellOptions{
-		WorkingDir:  workspaceWorkingDir(target.Root),
+		WorkingDir:  workspaceWorkingDir(root),
 		Env:         shellEnv.Env,
 		PathEntries: shellEnv.PathEntries,
 		Stdout:      cmd.OutOrStdout(),
@@ -180,6 +242,13 @@ func runWorkspaceCommand(cmd *cobra.Command, root *rootOptions, command []string
 	}
 	if len(command) == 0 {
 		return cmdruntime.RunInteractiveShell(runtimeOpts)
+	}
+	if shellTarget, ok := shellEnv.Targets[command[0]]; ok {
+		providerKey := strings.TrimSpace(result.Aliases[shellTarget.Alias])
+		if providerKey == "" {
+			return fmt.Errorf("workspace alias %q is not installed", shellTarget.Alias)
+		}
+		return runWorkspaceToolCommand(cmd, root, result.Home, providerKey, shellTarget.Alias, shellTarget.Tool, command[1:], shellEnv.Env, shellEnv.PathEntries)
 	}
 	return cmdruntime.RunCommand(cmdruntime.ShellCommandOptions{
 		ShellOptions: runtimeOpts,
@@ -398,7 +467,7 @@ func loadWorkspaceConfigAtRootIfPresent(root string) (workspace.Config, string, 
 	return workspace.Config{}, "", false, nil
 }
 
-func applyWorkspaceConfigChange(ctx context.Context, out io.Writer, globalHome string, target *workspaceTarget, desired workspace.Config) (workspace.SyncResult, string, error) {
+func applyWorkspaceConfigChange(ctx context.Context, out io.Writer, globalHome string, target *workspaceTarget, desired workspace.Config, verbose bool) (workspace.SyncResult, string, error) {
 	if target == nil {
 		return workspace.SyncResult{}, "", fmt.Errorf("workspace target is required")
 	}
@@ -408,12 +477,13 @@ func applyWorkspaceConfigChange(ctx context.Context, out io.Writer, globalHome s
 	result, err := workspace.Sync(ctx, target.Root, desired, workspace.SyncOptions{
 		Out:        out,
 		GlobalHome: globalHome,
+		Verbose:    verbose,
 	})
 	if err != nil {
 		return workspace.SyncResult{}, manifestPath, err
 	}
 	if err := workspace.Save(manifestPath, desired); err != nil {
-		rollbackErr := rollbackWorkspaceConfigChange(ctx, out, globalHome, target.Root, hadExistingConfig, previousConfig)
+		rollbackErr := rollbackWorkspaceConfigChange(ctx, out, globalHome, target.Root, hadExistingConfig, previousConfig, verbose)
 		if rollbackErr != nil {
 			return workspace.SyncResult{}, manifestPath, fmt.Errorf("save workspace manifest: %w (rollback failed: %v)", err, rollbackErr)
 		}
@@ -426,11 +496,12 @@ func applyWorkspaceConfigChange(ctx context.Context, out io.Writer, globalHome s
 	return result, manifestPath, nil
 }
 
-func rollbackWorkspaceConfigChange(ctx context.Context, out io.Writer, globalHome, root string, hadExistingConfig bool, previousConfig workspace.Config) error {
+func rollbackWorkspaceConfigChange(ctx context.Context, out io.Writer, globalHome, root string, hadExistingConfig bool, previousConfig workspace.Config, verbose bool) error {
 	if hadExistingConfig {
 		_, err := workspace.Sync(ctx, root, previousConfig, workspace.SyncOptions{
 			Out:        out,
 			GlobalHome: globalHome,
+			Verbose:    verbose,
 		})
 		return err
 	}

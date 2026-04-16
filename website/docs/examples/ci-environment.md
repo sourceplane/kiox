@@ -47,11 +47,13 @@ tinx --tinx-home "$TINX_HOME" ls default
 
 ## Authenticate to registries
 
-tinx reads registry credentials from standard Docker config and from environment variables such as:
+tinx prefers explicit environment credentials for non-interactive registry access:
 
 - `TINX_REGISTRY_USERNAME` / `TINX_REGISTRY_PASSWORD`
 - `ORAS_USERNAME` / `ORAS_PASSWORD`
 - `GITHUB_ACTOR` / `GITHUB_TOKEN` for `ghcr.io`
+
+Set `TINX_REGISTRY_DOCKER_AUTH=1` if you want tinx to fall back to Docker credential helpers and config. On macOS that fallback is disabled by default so public pulls do not trigger the system prompt for access to other apps' data.
 
 ## Non-interactive execution
 

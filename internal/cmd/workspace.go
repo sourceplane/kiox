@@ -6,7 +6,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	cmdruntime "github.com/sourceplane/tinx/internal/runtime"
 	"github.com/sourceplane/tinx/internal/state"
 	"github.com/sourceplane/tinx/internal/workspace"
 )
@@ -201,10 +200,7 @@ func useWorkspace(cmd *cobra.Command, root *rootOptions, reference string, comma
 	if err := requireReadyWorkspaceTarget(target); err != nil {
 		return err
 	}
-	result, err := workspace.Sync(cmd.Context(), target.Root, target.Config, workspace.SyncOptions{
-		Out:        cmd.ErrOrStderr(),
-		GlobalHome: globalHome,
-	})
+	result, err := prepareWorkspaceState(cmd.Context(), cmd.ErrOrStderr(), globalHome, target)
 	if err != nil {
 		return err
 	}
@@ -226,15 +222,5 @@ func useWorkspace(cmd *cobra.Command, root *rootOptions, reference string, comma
 	if err != nil {
 		return err
 	}
-	return cmdruntime.RunCommand(cmdruntime.ShellCommandOptions{
-		ShellOptions: cmdruntime.ShellOptions{
-			WorkingDir:  workspaceWorkingDir(target.Root),
-			Env:         shellEnv.Env,
-			PathEntries: shellEnv.PathEntries,
-			Stdout:      cmd.OutOrStdout(),
-			Stderr:      cmd.ErrOrStderr(),
-			Stdin:       os.Stdin,
-		},
-		Command: command,
-	})
+	return runPreparedWorkspaceCommand(cmd, target.Root, result, shellEnv, command)
 }

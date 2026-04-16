@@ -11,7 +11,10 @@ tinx reads a small set of environment variables from the host and writes additio
 | `TINX_HOME` | Override the default tinx home directory (`~/.tinx`) |
 | `TINX_REGISTRY_USERNAME` / `TINX_REGISTRY_PASSWORD` | Registry credentials for remote pulls and pushes |
 | `ORAS_USERNAME` / `ORAS_PASSWORD` | Alternative registry credentials for ORAS-backed operations |
-| `GITHUB_ACTOR` / `GITHUB_TOKEN` | Credentials used for `ghcr.io` when Docker credentials are not available |
+| `GITHUB_ACTOR` / `GITHUB_TOKEN` | Credentials used for `ghcr.io` when explicit registry credentials are not set |
+| `TINX_REGISTRY_DOCKER_AUTH` | Enable Docker credential-store fallback for registry operations. Default is `1` on Linux and Windows, and `0` on macOS to avoid interactive prompts during public pulls |
+| `TINX_REGISTRY_COPY_CONCURRENCY` | Maximum concurrent blob copy tasks for a single registry pull. Default is `2` |
+| `TINX_SYNC_INSTALL_CONCURRENCY` | Maximum number of independent provider installs tinx runs in parallel during workspace sync. Default is `4` |
 | `SHELL` | Preferred interactive shell for `tinx shell` |
 
 CLI flags take precedence when an equivalent flag exists. For example, `--tinx-home` overrides `TINX_HOME`.

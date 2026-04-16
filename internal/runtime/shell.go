@@ -66,6 +66,15 @@ func RunInteractiveShell(opts ShellOptions) error {
 	return nil
 }
 
+func LookPath(command string, envOverrides map[string]string, pathEntries []string) (string, error) {
+	env := envMapFromList(os.Environ())
+	for key, value := range envOverrides {
+		env[key] = value
+	}
+	applyPathEntries(env, pathEntries)
+	return resolveCommandPath(command, env["PATH"])
+}
+
 func prepareShellEnv(opts ShellOptions) map[string]string {
 	env := envMapFromList(os.Environ())
 	for key, value := range opts.Env {

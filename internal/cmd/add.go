@@ -67,7 +67,7 @@ func runAddProviderCommand(cmd *cobra.Command, root *rootOptions, args []string,
 	desiredConfig.Providers = providers
 	desiredConfig.Spec.Providers = nil
 
-	result, manifestPath, err := applyWorkspaceConfigChange(cmd.Context(), cmd.ErrOrStderr(), globalHome, target, desiredConfig)
+	_, manifestPath, err := applyWorkspaceConfigChange(cmd.Context(), cmd.ErrOrStderr(), globalHome, target, desiredConfig, false)
 	if err != nil {
 		return err
 	}
@@ -75,8 +75,8 @@ func runAddProviderCommand(cmd *cobra.Command, root *rootOptions, args []string,
 		return err
 	}
 	writeLine(cmd.OutOrStdout(), "added provider %s -> %s", providerAlias, providerSource)
-	writeLine(cmd.OutOrStdout(), "manifest: %s", manifestPath)
-	writeLine(cmd.OutOrStdout(), "home: %s", result.Home)
+	writeLine(cmd.OutOrStdout(), "manifest: %s", displayWorkspaceSummaryFilePath(manifestPath))
+	writeLine(cmd.OutOrStdout(), "home: %s", displayWorkspaceSummaryDirPath(target.Root))
 	return nil
 }
 
