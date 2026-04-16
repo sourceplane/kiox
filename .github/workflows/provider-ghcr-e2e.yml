@@ -52,12 +52,14 @@ jobs:
             --output testdata/echo-provider/oci \
             --push "${{ steps.vars.outputs.ref }}"
 
-      - name: Install and run from GHCR
+      - name: Create workspace and run from GHCR
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd testdata/echo-provider
-          ../../bin/tinx --tinx-home "$RUNNER_TEMP/tinx-home" install echo "${{ steps.vars.outputs.ref }}"
-          ../../bin/tinx --tinx-home "$RUNNER_TEMP/tinx-home" run echo plan --intent intent.yaml | tee "$RUNNER_TEMP/echo-run.out"
+          workspace_root="$RUNNER_TEMP/tinx-workspace"
+          ../../bin/tinx --tinx-home "$RUNNER_TEMP/tinx-home" init "$workspace_root"
+          ../../bin/tinx --tinx-home "$RUNNER_TEMP/tinx-home" --workspace "$workspace_root" add "${{ steps.vars.outputs.ref }}" as echo
+          ../../bin/tinx --tinx-home "$RUNNER_TEMP/tinx-home" --workspace "$workspace_root" -- echo plan --intent "$PWD/intent.yaml" | tee "$RUNNER_TEMP/echo-run.out"
           grep -q "capability=plan" "$RUNNER_TEMP/echo-run.out"
