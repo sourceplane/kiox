@@ -1,0 +1,148 @@
+{
+  "apiVersion": "kiox.io/v1",
+  "provider": {
+    "metadata": {
+      "name": "echo-provider",
+      "namespace": "sourceplane",
+      "version": "v0.1.0",
+      "description": "Test provider for kiox packaging and installation"
+    },
+    "spec": {
+      "contents": [
+        {
+          "kind": "Asset",
+          "name": "echo-provider-assets"
+        },
+        {
+          "kind": "Bundle",
+          "name": "echo-provider"
+        },
+        {
+          "kind": "Environment",
+          "name": "echo-provider"
+        },
+        {
+          "kind": "Tool",
+          "name": "echo-provider"
+        }
+      ]
+    }
+  },
+  "tools": {
+    "echo-provider": {
+      "metadata": {
+        "name": "echo-provider",
+        "namespace": "sourceplane",
+        "version": "v0.1.0",
+        "description": "Test provider for kiox packaging and installation"
+      },
+      "spec": {
+        "default": true,
+        "runtime": {
+          "type": "oci"
+        },
+        "source": {
+          "type": "bundle",
+          "ref": "echo-provider"
+        },
+        "install": {
+          "strategy": "lazy"
+        },
+        "cache": {},
+        "provides": [
+          "echo-provider"
+        ],
+        "environments": [
+          "echo-provider"
+        ],
+        "capabilities": {
+          "plan": {
+            "description": "Generate a plan"
+          }
+        }
+      }
+    }
+  },
+  "bundles": {
+    "echo-provider": {
+      "metadata": {
+        "name": "echo-provider",
+        "namespace": "sourceplane",
+        "version": "v0.1.0"
+      },
+      "spec": {
+        "layers": [
+          {
+            "platform": {
+              "os": "darwin",
+              "arch": "amd64"
+            },
+            "mediaType": "application/vnd.kiox.tool.binary",
+            "source": "bin/darwin/amd64/echo-provider"
+          },
+          {
+            "platform": {
+              "os": "darwin",
+              "arch": "arm64"
+            },
+            "mediaType": "application/vnd.kiox.tool.binary",
+            "source": "bin/darwin/arm64/echo-provider"
+          },
+          {
+            "platform": {
+              "os": "linux",
+              "arch": "amd64"
+            },
+            "mediaType": "application/vnd.kiox.tool.binary",
+            "source": "bin/linux/amd64/echo-provider"
+          },
+          {
+            "platform": {
+              "os": "linux",
+              "arch": "arm64"
+            },
+            "mediaType": "application/vnd.kiox.tool.binary",
+            "source": "bin/linux/arm64/echo-provider"
+          },
+          {
+            "platform": {
+              "os": "any",
+              "arch": "any"
+            },
+            "mediaType": "application/vnd.kiox.asset.layer.v1+tar",
+            "source": "assets"
+          }
+        ]
+      }
+    }
+  },
+  "assets": {
+    "echo-provider-assets": {
+      "metadata": {
+        "name": "echo-provider-assets",
+        "namespace": "sourceplane",
+        "version": "v0.1.0"
+      },
+      "spec": {
+        "source": {
+          "type": "bundle",
+          "ref": "echo-provider"
+        },
+        "mount": {
+          "path": "assets"
+        }
+      }
+    }
+  },
+  "environments": {
+    "echo-provider": {
+      "metadata": {
+        "name": "echo-provider",
+        "namespace": "sourceplane",
+        "version": "v0.1.0",
+        "description": "Test provider for kiox packaging and installation"
+      },
+      "spec": {}
+    }
+  }
+}

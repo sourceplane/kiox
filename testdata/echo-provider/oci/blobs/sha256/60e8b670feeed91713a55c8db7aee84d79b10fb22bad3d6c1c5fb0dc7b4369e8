@@ -4,13 +4,13 @@
   "artifactType": "application/vnd.kiox.provider.v1",
   "config": {
     "mediaType": "application/vnd.kiox.provider.config.v1+json",
-    "digest": "sha256:00b0716764239ea860caaafbb34c3f90844b585c9a6cd5504c95189a05265aba",
-    "size": 260
+    "digest": "sha256:6fbd09cec94f72b7110ad2665cd513635c0788752f2de12f7014314e9a12a9aa",
+    "size": 291
   },
   "layers": [
     {
       "mediaType": "application/vnd.kiox.provider.manifest.v1+yaml",
-      "digest": "sha256:72f3d6d19879ae0b6880a69212c0e8883107af35497908834bbdb9a1f6bd9c07",
+      "digest": "sha256:92844f8772c315b992d38eaa5334593d8c2e310ee38956a80572b4752b6370a9",
       "size": 661,
       "annotations": {
         "org.opencontainers.image.title": "kiox.yaml"
@@ -18,54 +18,65 @@
     },
     {
       "mediaType": "application/vnd.kiox.provider.metadata.v1+json",
-      "digest": "sha256:9c46b3a58202ab57fa5ad304894629979b55ac21be495bcf0b9ac73d2e63cd7d",
-      "size": 689,
+      "digest": "sha256:04303aa7868db1b8fb366a1ee479238b1dd7f023e1d863abe22007474e0f3ae3",
+      "size": 3439,
       "annotations": {
-        "org.opencontainers.image.title": "metadata.json"
-      }
-    },
-    {
-      "mediaType": "application/vnd.kiox.provider.assets.v1+tar",
-      "digest": "sha256:82db5a913d99ed3dfa022bf969e2216f165ef44d68fbc7d8153062129041687b",
-      "size": 2560,
-      "annotations": {
-        "org.opencontainers.image.title": "assets"
+        "org.opencontainers.image.title": "package.json"
       }
     },
     {
       "mediaType": "application/vnd.kiox.provider.binary.darwin.amd64.v1",
-      "digest": "sha256:1d13882e595f723e6ed7e200613cd0fbc5e83bd7750d37f9d704f6208507c992",
-      "size": 1630448,
+      "digest": "sha256:829c6bffefb952e06d100d3f598f245b6c585ca9324612fa9872e5b1bbbcefc7",
+      "size": 1622256,
       "annotations": {
+        "io.kiox.bundle": "echo-provider",
         "io.kiox.platform": "darwin/amd64",
+        "io.kiox.source": "bin/darwin/amd64/echo-provider",
         "org.opencontainers.image.title": "bin/darwin/amd64/echo-provider"
       }
     },
     {
       "mediaType": "application/vnd.kiox.provider.binary.darwin.arm64.v1",
-      "digest": "sha256:5572f3cee33c543fc0b3403a56b74e2d793130adc10a8dee577ff7d740d4095f",
-      "size": 1622930,
+      "digest": "sha256:2dff1df1c90cf2461ab8021dab75ac1135354f92560f96bcfc3a937b2f1e78fd",
+      "size": 1606418,
       "annotations": {
+        "io.kiox.bundle": "echo-provider",
         "io.kiox.platform": "darwin/arm64",
+        "io.kiox.source": "bin/darwin/arm64/echo-provider",
         "org.opencontainers.image.title": "bin/darwin/arm64/echo-provider"
       }
     },
     {
       "mediaType": "application/vnd.kiox.provider.binary.linux.amd64.v1",
-      "digest": "sha256:eaeff22f714a2df63e19011a7446a1073f0496b3269903240de0d0865d54a061",
-      "size": 1519800,
+      "digest": "sha256:9a5113a56bed51a02f651b776ba2fff93c6cccd81a5f5bf9d7879a88acdf5e28",
+      "size": 1511608,
       "annotations": {
+        "io.kiox.bundle": "echo-provider",
         "io.kiox.platform": "linux/amd64",
+        "io.kiox.source": "bin/linux/amd64/echo-provider",
         "org.opencontainers.image.title": "bin/linux/amd64/echo-provider"
       }
     },
     {
       "mediaType": "application/vnd.kiox.provider.binary.linux.arm64.v1",
-      "digest": "sha256:15c496930d19f60b5af996bed8106f364a09b4a9f927a0c9e0a90a8e0f5a53ec",
+      "digest": "sha256:3f1f729a993f1d5692370615d3dafaee97b9e6cc4004c98de79826cb8cbc38ed",
       "size": 1573048,
       "annotations": {
+        "io.kiox.bundle": "echo-provider",
         "io.kiox.platform": "linux/arm64",
+        "io.kiox.source": "bin/linux/arm64/echo-provider",
         "org.opencontainers.image.title": "bin/linux/arm64/echo-provider"
+      }
+    },
+    {
+      "mediaType": "application/vnd.kiox.asset.layer.v1+tar",
+      "digest": "sha256:35df82134d8aa2f4178132cbd3771146fbe2937959b875609e6f111cde2cff45",
+      "size": 2560,
+      "annotations": {
+        "io.kiox.bundle": "echo-provider",
+        "io.kiox.platform": "any/any",
+        "io.kiox.source": "assets",
+        "org.opencontainers.image.title": "assets"
       }
     }
   ],
