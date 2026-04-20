@@ -30,7 +30,7 @@ func TestVersionCommand(t *testing.T) {
 	if err := cmd.ExecuteContext(context.Background()); err != nil {
 		t.Fatalf("ExecuteContext() error = %v", err)
 	}
-	if !strings.Contains(buf.String(), "tinx") {
+	if !strings.Contains(buf.String(), "kiox") {
 		t.Fatalf("unexpected version output: %s", buf.String())
 	}
 }

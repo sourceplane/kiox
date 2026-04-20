@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sourceplane/tinx/internal/state"
+	"github.com/sourceplane/kiox/internal/state"
 )
 
 func TestExecuteWorkspaceInstallRequestsDeduplicatesAndRunsInParallel(t *testing.T) {

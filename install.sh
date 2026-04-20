@@ -5,10 +5,10 @@ if (set -o pipefail) >/dev/null 2>&1; then
   set -o pipefail
 fi
 
-REPO="${TINX_REPO:-sourceplane/tinx}"
-BIN_NAME="${TINX_BIN_NAME:-tinx}"
-INSTALL_DIR="${TINX_INSTALL_DIR:-${HOME}/.local/bin}"
-REQUESTED_VERSION="${TINX_VERSION:-latest}"
+REPO="${KIOX_REPO:-sourceplane/kiox}"
+BIN_NAME="${KIOX_BIN_NAME:-kiox}"
+INSTALL_DIR="${KIOX_INSTALL_DIR:-${HOME}/.local/bin}"
+REQUESTED_VERSION="${KIOX_VERSION:-latest}"
 
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || {

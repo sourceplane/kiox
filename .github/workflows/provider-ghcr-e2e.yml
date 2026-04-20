@@ -22,16 +22,16 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Build tinx
+      - name: Build kiox
         run: |
           mkdir -p bin
-          go build -o bin/tinx ./cmd/tinx
+          go build -o bin/kiox ./cmd/kiox
 
       - name: Compute GHCR ref
         id: vars
         run: |
           owner=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')
-          echo "ref=ghcr.io/${owner}/tinx-echo-provider:ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+          echo "ref=ghcr.io/${owner}/kiox-echo-provider:ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
 
       - name: Login to GHCR
         uses: docker/login-action@v3
@@ -45,8 +45,8 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ./bin/tinx release \
-            --manifest testdata/echo-provider/tinx.yaml \
+          ./bin/kiox release \
+            --manifest testdata/echo-provider/kiox.yaml \
             --main ./cmd/echo-provider \
             --dist testdata/echo-provider/dist \
             --output testdata/echo-provider/oci \
@@ -58,8 +58,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd testdata/echo-provider
-          workspace_root="$RUNNER_TEMP/tinx-workspace"
-          ../../bin/tinx --tinx-home "$RUNNER_TEMP/tinx-home" init "$workspace_root"
-          ../../bin/tinx --tinx-home "$RUNNER_TEMP/tinx-home" --workspace "$workspace_root" add "${{ steps.vars.outputs.ref }}" as echo
-          ../../bin/tinx --tinx-home "$RUNNER_TEMP/tinx-home" --workspace "$workspace_root" -- echo plan --intent "$PWD/intent.yaml" | tee "$RUNNER_TEMP/echo-run.out"
+          workspace_root="$RUNNER_TEMP/kiox-workspace"
+          ../../bin/kiox --kiox-home "$RUNNER_TEMP/kiox-home" init "$workspace_root"
+          ../../bin/kiox --kiox-home "$RUNNER_TEMP/kiox-home" --workspace "$workspace_root" add "${{ steps.vars.outputs.ref }}" as echo
+          ../../bin/kiox --kiox-home "$RUNNER_TEMP/kiox-home" --workspace "$workspace_root" -- echo plan --intent "$PWD/intent.yaml" | tee "$RUNNER_TEMP/echo-run.out"
           grep -q "capability=plan" "$RUNNER_TEMP/echo-run.out"

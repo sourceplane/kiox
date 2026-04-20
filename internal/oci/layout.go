@@ -20,10 +20,10 @@ import (
 	digest "github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	"github.com/sourceplane/tinx/internal/core"
-	"github.com/sourceplane/tinx/internal/parser"
-	"github.com/sourceplane/tinx/internal/state"
-	"github.com/sourceplane/tinx/internal/ui/progress"
+	"github.com/sourceplane/kiox/internal/core"
+	"github.com/sourceplane/kiox/internal/parser"
+	"github.com/sourceplane/kiox/internal/state"
+	"github.com/sourceplane/kiox/internal/ui/progress"
 )
 
 const layoutVersion = "1.0.0"
@@ -89,7 +89,7 @@ func Pack(opts PackOptions) (PackResult, error) {
 	if err != nil {
 		return PackResult{}, err
 	}
-	providerManifestDesc, err := writeBlob(opts.OutputDir, manifestBytes, MediaTypeManifest, map[string]string{"org.opencontainers.image.title": "tinx.yaml"})
+	providerManifestDesc, err := writeBlob(opts.OutputDir, manifestBytes, MediaTypeManifest, map[string]string{"org.opencontainers.image.title": "kiox.yaml"})
 	if err != nil {
 		return PackResult{}, err
 	}
@@ -113,9 +113,9 @@ func Pack(opts PackOptions) (PackResult, error) {
 			}
 			desc, err := writeBlob(opts.OutputDir, layerData, bundleLayerMediaType(layer), map[string]string{
 				"org.opencontainers.image.title": layer.Source,
-				"io.tinx.bundle":                 bundleName,
-				"io.tinx.platform":               layer.Platform.OS + "/" + layer.Platform.Arch,
-				"io.tinx.source":                 layer.Source,
+				"io.kiox.bundle":                 bundleName,
+				"io.kiox.platform":               layer.Platform.OS + "/" + layer.Platform.Arch,
+				"io.kiox.source":                 layer.Source,
 			})
 			if err != nil {
 				return PackResult{}, err
@@ -162,7 +162,7 @@ func Pack(opts PackOptions) (PackResult, error) {
 }
 
 func BinaryMediaType(goos, goarch string) string {
-	return fmt.Sprintf("application/vnd.tinx.provider.binary.%s.%s.v1", goos, goarch)
+	return fmt.Sprintf("application/vnd.kiox.provider.binary.%s.%s.v1", goos, goarch)
 }
 
 func InstallMetadata(layoutPath, tag, activationHome, storeHome, alias string, out io.Writer) (state.ProviderMetadata, error) {
@@ -198,7 +198,7 @@ func installMetadata(layoutPath, tag, activationHome, storeHome, alias, ref stri
 		return state.ProviderMetadata{}, fmt.Errorf("cache OCI layout: %w", err)
 	}
 	tracker.Info("cache", "cached OCI blobs")
-	if err := os.WriteFile(filepath.Join(storeRoot, "tinx.yaml"), manifestBytes, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(storeRoot, "kiox.yaml"), manifestBytes, 0o644); err != nil {
 		return state.ProviderMetadata{}, fmt.Errorf("cache manifest: %w", err)
 	}
 	if err := os.WriteFile(filepath.Join(storeRoot, "package.json"), metadataBytes, 0o644); err != nil {
@@ -641,7 +641,7 @@ func copyDirectory(srcDir, dstDir string) error {
 
 func descriptorFromLayer(layer ocispec.Descriptor) BundleLayerDescriptor {
 	platform := core.PlatformSpec{}
-	if raw := strings.TrimSpace(layer.Annotations["io.tinx.platform"]); raw != "" {
+	if raw := strings.TrimSpace(layer.Annotations["io.kiox.platform"]); raw != "" {
 		parts := strings.SplitN(raw, "/", 2)
 		if len(parts) == 2 {
 			platform.OS = strings.TrimSpace(parts[0])
@@ -649,9 +649,9 @@ func descriptorFromLayer(layer ocispec.Descriptor) BundleLayerDescriptor {
 		}
 	}
 	return BundleLayerDescriptor{
-		Bundle:     strings.TrimSpace(layer.Annotations["io.tinx.bundle"]),
+		Bundle:     strings.TrimSpace(layer.Annotations["io.kiox.bundle"]),
 		Platform:   platform,
-		Source:     strings.TrimSpace(firstNonEmpty(layer.Annotations["io.tinx.source"], layer.Annotations["org.opencontainers.image.title"])),
+		Source:     strings.TrimSpace(firstNonEmpty(layer.Annotations["io.kiox.source"], layer.Annotations["org.opencontainers.image.title"])),
 		MediaType:  layer.MediaType,
 		Descriptor: layer,
 	}
@@ -719,7 +719,7 @@ func readBundleLayerData(artifactRoot string, layer core.BundleLayer) ([]byte, e
 
 func bundleLayerMediaType(layer core.BundleLayer) string {
 	if mediaType := strings.TrimSpace(layer.MediaType); mediaType != "" {
-		if mediaType == "application/vnd.tinx.tool.binary" {
+		if mediaType == "application/vnd.kiox.tool.binary" {
 			return BinaryMediaType(layer.Platform.OS, layer.Platform.Arch)
 		}
 		return mediaType
@@ -802,7 +802,7 @@ func LoadPackageModel(meta state.ProviderMetadata) (core.Package, error) {
 			return layoutPkg, nil
 		}
 	}
-	manifestBytes, err := os.ReadFile(filepath.Join(storeRoot, "tinx.yaml"))
+	manifestBytes, err := os.ReadFile(filepath.Join(storeRoot, "kiox.yaml"))
 	if err != nil {
 		return pkg, fmt.Errorf("read cached provider manifest: %w", err)
 	}
@@ -837,7 +837,7 @@ func backfillCachedPackageFiles(meta state.ProviderMetadata, storeRoot string, m
 		writeMissingCacheFile(filepath.Join(storeRoot, "package.json"), metadataBytes)
 	}
 	if len(manifestBytes) > 0 {
-		writeMissingCacheFile(filepath.Join(storeRoot, "tinx.yaml"), manifestBytes)
+		writeMissingCacheFile(filepath.Join(storeRoot, "kiox.yaml"), manifestBytes)
 	}
 }
 

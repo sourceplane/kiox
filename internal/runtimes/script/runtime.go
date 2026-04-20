@@ -6,9 +6,9 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/sourceplane/tinx/internal/core"
-	truntime "github.com/sourceplane/tinx/internal/runtime"
-	"github.com/sourceplane/tinx/internal/state"
+	"github.com/sourceplane/kiox/internal/core"
+	truntime "github.com/sourceplane/kiox/internal/runtime"
+	"github.com/sourceplane/kiox/internal/state"
 )
 
 type Plugin struct{}
@@ -78,12 +78,12 @@ func mergeScriptEnvironment(ctx truntime.Context, resolved truntime.ResolvedTool
 	for key, value := range ctx.Env {
 		env[key] = value
 	}
-	env["TINX_TOOL_INSTALL_DIR"] = resolved.InstallDir
-	env["TINX_TOOL_BIN"] = resolved.BinaryPath
-	env["TINX_TOOL_NAME"] = resolved.Tool.Metadata.Name
-	env["TINX_TOOL_COMMAND"] = resolved.Tool.PrimaryProvide()
-	env["TINX_PROVIDER_HOME"] = state.MetadataStoreRoot(ctx.Metadata)
-	env["TINX_INTERNAL_CLI"] = ""
+	env["KIOX_TOOL_INSTALL_DIR"] = resolved.InstallDir
+	env["KIOX_TOOL_BIN"] = resolved.BinaryPath
+	env["KIOX_TOOL_NAME"] = resolved.Tool.Metadata.Name
+	env["KIOX_TOOL_COMMAND"] = resolved.Tool.PrimaryProvide()
+	env["KIOX_PROVIDER_HOME"] = state.MetadataStoreRoot(ctx.Metadata)
+	env["KIOX_INTERNAL_CLI"] = ""
 	return env
 }
 

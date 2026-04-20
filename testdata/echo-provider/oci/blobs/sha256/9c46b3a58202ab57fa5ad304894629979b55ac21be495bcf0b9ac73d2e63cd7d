@@ -2,7 +2,7 @@
   "namespace": "sourceplane",
   "name": "echo-provider",
   "version": "v0.1.0",
-  "description": "Test provider for tinx packaging and installation",
+  "description": "Test provider for kiox packaging and installation",
   "entrypoint": "echo-provider",
   "runtime": "binary",
   "capabilities": [

@@ -25,8 +25,8 @@ func TestResolveGoReleaserConfigPrefersExplicitPath(t *testing.T) {
 
 func TestResolveGoReleaserConfigGeneratesFromManifest(t *testing.T) {
 	moduleRoot := t.TempDir()
-	manifestPath := filepath.Join(moduleRoot, "tinx.yaml")
-	content := `apiVersion: tinx.io/v1
+	manifestPath := filepath.Join(moduleRoot, "kiox.yaml")
+	content := `apiVersion: kiox.io/v1
 kind: Provider
 metadata:
   namespace: sourceplane
@@ -54,7 +54,7 @@ spec:
 	if err != nil {
 		t.Fatalf("resolve generated config: %v", err)
 	}
-	if filepath.Base(resolved) != ".goreleaser.tinx.generated.yaml" {
+	if filepath.Base(resolved) != ".goreleaser.kiox.generated.yaml" {
 		t.Fatalf("unexpected generated config name: %s", resolved)
 	}
 

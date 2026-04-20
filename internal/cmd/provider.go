@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/sourceplane/tinx/internal/state"
-	"github.com/sourceplane/tinx/internal/workspace"
+	"github.com/sourceplane/kiox/internal/state"
+	"github.com/sourceplane/kiox/internal/workspace"
 )
 
 func newProviderCommand(root *rootOptions) *cobra.Command {
@@ -165,7 +165,7 @@ func resolveRequiredWorkspaceTarget(cmd *cobra.Command, root *rootOptions) (stri
 		return "", nil, err
 	}
 	if target == nil {
-		return "", nil, fmt.Errorf("no workspace selected; run tinx workspace use <workspace>, execute inside a workspace, or pass --workspace")
+		return "", nil, fmt.Errorf("no workspace selected; run kiox workspace use <workspace>, execute inside a workspace, or pass --workspace")
 	}
 	if err := requireReadyWorkspaceTarget(target); err != nil {
 		return "", nil, err

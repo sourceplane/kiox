@@ -14,7 +14,7 @@ type ExecOptions struct {
 	Args         []string
 	WorkingDir   string
 	ProviderHome string
-	TinxVersion  string
+	KioxVersion  string
 	EnvOverrides map[string]string
 	PathEntries  []string
 	Stdout       io.Writer
@@ -51,10 +51,10 @@ func withProviderEnvironment(opts ExecOptions) map[string]string {
 	for key, value := range opts.EnvOverrides {
 		env[key] = value
 	}
-	env["TINX_PROVIDER_HOME"] = opts.ProviderHome
-	env["TINX_VERSION"] = opts.TinxVersion
-	env["TINX_CONTEXT"] = "{}"
-	env["TINX_INTERNAL_CLI"] = ""
+	env["KIOX_PROVIDER_HOME"] = opts.ProviderHome
+	env["KIOX_VERSION"] = opts.KioxVersion
+	env["KIOX_CONTEXT"] = "{}"
+	env["KIOX_INTERNAL_CLI"] = ""
 	return env
 }
 

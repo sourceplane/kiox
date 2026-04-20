@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/sourceplane/tinx/internal/workspace"
+	"github.com/sourceplane/kiox/internal/workspace"
 )
 
 func newAddCommand(root *rootOptions) *cobra.Command {
@@ -38,7 +38,7 @@ func runAddProviderCommand(cmd *cobra.Command, root *rootOptions, args []string,
 		return err
 	}
 	if target == nil {
-		return fmt.Errorf("no workspace selected; run tinx workspace use <workspace>, execute inside a workspace, or pass --workspace")
+		return fmt.Errorf("no workspace selected; run kiox workspace use <workspace>, execute inside a workspace, or pass --workspace")
 	}
 	if err := requireReadyWorkspaceTarget(target); err != nil {
 		return err

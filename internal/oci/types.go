@@ -3,15 +3,15 @@ package oci
 import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	"github.com/sourceplane/tinx/internal/core"
+	"github.com/sourceplane/kiox/internal/core"
 )
 
 const (
-	ArtifactTypeProvider = "application/vnd.tinx.provider.v1"
-	MediaTypeConfig      = "application/vnd.tinx.provider.config.v1+json"
-	MediaTypeManifest    = "application/vnd.tinx.provider.manifest.v1+yaml"
-	MediaTypeMetadata    = "application/vnd.tinx.provider.metadata.v1+json"
-	MediaTypeAssets      = "application/vnd.tinx.provider.assets.v1+tar"
+	ArtifactTypeProvider = "application/vnd.kiox.provider.v1"
+	MediaTypeConfig      = "application/vnd.kiox.provider.config.v1+json"
+	MediaTypeManifest    = "application/vnd.kiox.provider.manifest.v1+yaml"
+	MediaTypeMetadata    = "application/vnd.kiox.provider.metadata.v1+json"
+	MediaTypeAssets      = "application/vnd.kiox.provider.assets.v1+tar"
 )
 
 type ProviderConfig struct {

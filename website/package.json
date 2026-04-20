@@ -1,7 +1,7 @@
 {
-  "name": "tinx-docs",
+  "name": "kiox-docs",
   "version": "1.0.0",
-  "description": "Documentation site for tinx",
+  "description": "Documentation site for kiox",
   "scripts": {
     "docs:start": "docusaurus start",
     "docs:build": "docusaurus build --out-dir docs-build",
@@ -9,15 +9,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sourceplane/tinx.git"
+    "url": "git+https://github.com/sourceplane/kiox.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/sourceplane/tinx/issues"
+    "url": "https://github.com/sourceplane/kiox/issues"
   },
-  "homepage": "https://github.com/sourceplane/tinx#readme",
+  "homepage": "https://github.com/sourceplane/kiox#readme",
   "private": true,
   "dependencies": {
     "@docusaurus/core": "^3.9.2",

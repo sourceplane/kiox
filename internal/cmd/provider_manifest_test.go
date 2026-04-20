@@ -21,7 +21,7 @@ func TestResolveProviderManifestPathPrefersProviderYAML(t *testing.T) {
 	}
 }
 
-func TestResolveProviderManifestPathFallsBackToLegacyTinxYAML(t *testing.T) {
+func TestResolveProviderManifestPathFallsBackToLegacyKioxYAML(t *testing.T) {
 	dir := t.TempDir()
 	legacyPath := filepath.Join(dir, legacyProviderManifestName)
 	if err := os.WriteFile(legacyPath, []byte("kind: Provider\n"), 0o644); err != nil {

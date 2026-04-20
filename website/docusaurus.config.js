@@ -3,12 +3,12 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 
 const config = {
-  title: 'tinx',
+  title: 'kiox',
   tagline: 'OCI-native provider runtime, workspace shell, and packager',
   url: 'https://your-cloudflare-project.pages.dev',
   baseUrl: '/',
   organizationName: 'sourceplane',
-  projectName: 'tinx',
+  projectName: 'kiox',
   onBrokenLinks: 'throw',
   onDuplicateRoutes: 'throw',
   markdown: {
@@ -38,7 +38,7 @@ const config = {
   ],
   themeConfig: {
     navbar: {
-      title: 'tinx',
+      title: 'kiox',
       items: [
         {
           to: '/',
@@ -46,7 +46,7 @@ const config = {
           position: 'left',
         },
         {
-          href: 'https://github.com/sourceplane/tinx',
+          href: 'https://github.com/sourceplane/kiox',
           label: 'GitHub',
           position: 'right',
         },
@@ -73,7 +73,7 @@ const config = {
         {
           title: 'Reference',
           items: [
-            { label: 'CLI', to: '/cli/tinx' },
+            { label: 'CLI', to: '/cli/kiox' },
             { label: 'Architecture', to: '/architecture/internals' },
             { label: 'Contributing', to: '/contributing/' },
           ],

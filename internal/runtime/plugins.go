@@ -5,8 +5,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/sourceplane/tinx/internal/core"
-	"github.com/sourceplane/tinx/internal/state"
+	"github.com/sourceplane/kiox/internal/core"
+	"github.com/sourceplane/kiox/internal/state"
 )
 
 type Context struct {

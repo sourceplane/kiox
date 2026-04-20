@@ -1,16 +1,16 @@
 ---
-title: Use tinx in CI
+title: Use kiox in CI
 ---
 
-Use tinx in CI when you want providers resolved the same way on developer machines and in automation.
+Use kiox in CI when you want providers resolved the same way on developer machines and in automation.
 
-## Use an explicit tinx home
+## Use an explicit kiox home
 
-Set `--tinx-home` or `TINX_HOME` so the CI cache path is predictable:
+Set `--kiox-home` or `KIOX_HOME` so the CI cache path is predictable:
 
 ```bash
-export TINX_HOME="$PWD/.tinx-home"
-tinx --tinx-home "$TINX_HOME" install ghcr.io/acme/node-provider:v20.19.0
+export KIOX_HOME="$PWD/.kiox-home"
+kiox --kiox-home "$KIOX_HOME" install ghcr.io/acme/node-provider:v20.19.0
 ```
 
 `install` only pre-populates provider metadata and OCI store content. The first workspace command may still lazily materialize tools.
@@ -18,50 +18,50 @@ tinx --tinx-home "$TINX_HOME" install ghcr.io/acme/node-provider:v20.19.0
 ## Materialize from a workspace manifest
 
 ```bash
-tinx init ci-workspace -p ghcr.io/acme/node-provider:v20.19.0 as node
-tinx --workspace ci-workspace -- node --version
+kiox init ci-workspace -p ghcr.io/acme/node-provider:v20.19.0 as node
+kiox --workspace ci-workspace -- node --version
 ```
 
-Or check in a `tinx.yaml` and initialize from that manifest:
+Or check in a `kiox.yaml` and initialize from that manifest:
 
 ```bash
-tinx init
-tinx sync   # after manual edits
-tinx -- node build
+kiox init
+kiox sync   # after manual edits
+kiox -- node build
 ```
 
 ## Cache the home directory
 
 Cache these paths between CI jobs:
 
-- `.tinx-home/providers/`
-- `.tinx-home/store/`
+- `.kiox-home/providers/`
+- `.kiox-home/store/`
 
 That preserves metadata, OCI store content, extracted assets, and previously installed lazy tools so later jobs avoid re-downloading or reinstalling providers.
 
 If you need visibility into what the cache contains, emit inventory in CI logs:
 
 ```bash
-tinx --tinx-home "$TINX_HOME" ls default
+kiox --kiox-home "$KIOX_HOME" ls default
 ```
 
 ## Authenticate to registries
 
-tinx prefers explicit environment credentials for non-interactive registry access:
+kiox prefers explicit environment credentials for non-interactive registry access:
 
-- `TINX_REGISTRY_USERNAME` / `TINX_REGISTRY_PASSWORD`
+- `KIOX_REGISTRY_USERNAME` / `KIOX_REGISTRY_PASSWORD`
 - `ORAS_USERNAME` / `ORAS_PASSWORD`
 - `GITHUB_ACTOR` / `GITHUB_TOKEN` for `ghcr.io`
 
-Set `TINX_REGISTRY_DOCKER_AUTH=1` if you want tinx to fall back to Docker credential helpers and config. On macOS that fallback is disabled by default so public pulls do not trigger the system prompt for access to other apps' data.
+Set `KIOX_REGISTRY_DOCKER_AUTH=1` if you want kiox to fall back to Docker credential helpers and config. On macOS that fallback is disabled by default so public pulls do not trigger the system prompt for access to other apps' data.
 
 ## Non-interactive execution
 
-Prefer `tinx exec` or `tinx --` in CI:
+Prefer `kiox exec` or `kiox --` in CI:
 
 ```bash
-tinx exec lite-ci plan
-tinx -- node test
+kiox exec lite-ci plan
+kiox -- node test
 ```
 
-Use `tinx shell` only for local interactive debugging.
+Use `kiox shell` only for local interactive debugging.

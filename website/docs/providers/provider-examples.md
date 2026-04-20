@@ -15,10 +15,10 @@ Manual commands for all fixtures live in `TEST_PROVIDERS.md`.
 
 ## Legacy compatibility fixture
 
-`testdata/echo-provider/tinx.yaml` keeps the old single-tool authoring model available:
+`testdata/echo-provider/kiox.yaml` keeps the old single-tool authoring model available:
 
 ```yaml
-apiVersion: tinx.io/v1
+apiVersion: kiox.io/v1
 kind: Provider
 metadata:
   namespace: sourceplane
@@ -46,7 +46,7 @@ Use it when you want the shortest possible provider manifest or need to validate
 
 ## Multi-document normalized fixture
 
-`testdata/multi-tool-provider/tinx.yaml` shows the current package model split across several YAML documents:
+`testdata/multi-tool-provider/kiox.yaml` shows the current package model split across several YAML documents:
 
 - `setup-echo` is an `oci` tool backed by bundle layers
 - `echo-tool` is a `script` tool that depends on `setup-echo`
@@ -55,7 +55,7 @@ Use it when you want the shortest possible provider manifest or need to validate
 
 ## Inline normalized fixture
 
-`testdata/inline-tool-provider/tinx.yaml` keeps everything in one `Provider` document:
+`testdata/inline-tool-provider/kiox.yaml` keeps everything in one `Provider` document:
 
 - inline `tools`, `bundles`, `assets`, and `environments`
 - synthesized `spec.contents`
@@ -64,7 +64,7 @@ Use it when you want the shortest possible provider manifest or need to validate
 
 ## Managed-install fixture
 
-`testdata/setup-kubectl/tinx.yaml` demonstrates the new setup-provider flow:
+`testdata/setup-kubectl/kiox.yaml` demonstrates the new setup-provider flow:
 
 - `setup-kubectl` is a bundle-backed installer tool
 - `kubectl` is a `local` tool with `install.tool` and `install.path`
@@ -101,7 +101,7 @@ tools:
   - name: echo-tool
     default: true
     runtime: script
-    script: setup-echo "$TINX_TOOL_BIN"
+    script: setup-echo "$KIOX_TOOL_BIN"
     dependsOn:
       - tool: setup-echo
 ```

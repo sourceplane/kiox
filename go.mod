@@ -1,4 +1,4 @@
-module github.com/sourceplane/tinx
+module github.com/sourceplane/kiox
 
 go 1.24
 

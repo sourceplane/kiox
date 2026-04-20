@@ -3,7 +3,7 @@ package cmd
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/sourceplane/tinx/internal/workspace"
+	"github.com/sourceplane/kiox/internal/workspace"
 )
 
 func newSyncCommand(root *rootOptions) *cobra.Command {
@@ -11,7 +11,7 @@ func newSyncCommand(root *rootOptions) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "sync",
-		Short: "Reconcile workspace state from tinx.yaml",
+		Short: "Reconcile workspace state from kiox.yaml",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runSyncCommand(cmd, root, verbose)

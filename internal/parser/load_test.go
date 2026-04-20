@@ -4,12 +4,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sourceplane/tinx/internal/core"
+	"github.com/sourceplane/kiox/internal/core"
 )
 
 func TestLoadBytesNormalizesLegacyProvider(t *testing.T) {
 	manifest := strings.Join([]string{
-		"apiVersion: tinx.io/v1",
+		"apiVersion: kiox.io/v1",
 		"kind: Provider",
 		"metadata:",
 		"  namespace: sourceplane",
@@ -61,7 +61,7 @@ func TestLoadBytesNormalizesLegacyProvider(t *testing.T) {
 
 func TestLoadBytesParsesMultiDocumentProvider(t *testing.T) {
 	manifest := strings.Join([]string{
-		"apiVersion: tinx.io/v1",
+		"apiVersion: kiox.io/v1",
 		"kind: Provider",
 		"metadata:",
 		"  namespace: acme",
@@ -74,7 +74,7 @@ func TestLoadBytesParsesMultiDocumentProvider(t *testing.T) {
 		"    - Bundle: setup-tool",
 		"    - Environment: demo-env",
 		"---",
-		"apiVersion: tinx.io/v1",
+		"apiVersion: kiox.io/v1",
 		"kind: Bundle",
 		"metadata:",
 		"  name: setup-tool",
@@ -84,9 +84,9 @@ func TestLoadBytesParsesMultiDocumentProvider(t *testing.T) {
 		"        os: darwin",
 		"        arch: arm64",
 		"      source: bin/darwin/arm64/setup-tool",
-		"      mediaType: application/vnd.tinx.tool.binary",
+		"      mediaType: application/vnd.kiox.tool.binary",
 		"---",
-		"apiVersion: tinx.io/v1",
+		"apiVersion: kiox.io/v1",
 		"kind: Tool",
 		"metadata:",
 		"  name: setup-tool",
@@ -99,7 +99,7 @@ func TestLoadBytesParsesMultiDocumentProvider(t *testing.T) {
 		"  provides:",
 		"    - setup-tool",
 		"---",
-		"apiVersion: tinx.io/v1",
+		"apiVersion: kiox.io/v1",
 		"kind: Tool",
 		"metadata:",
 		"  name: default-tool",
@@ -109,7 +109,7 @@ func TestLoadBytesParsesMultiDocumentProvider(t *testing.T) {
 		"    type: script",
 		"  source:",
 		"    type: script",
-		"    script: setup-tool \"$TINX_TOOL_BIN\"",
+		"    script: setup-tool \"$KIOX_TOOL_BIN\"",
 		"  dependsOn:",
 		"    - tool: setup-tool",
 		"  provides:",
@@ -117,7 +117,7 @@ func TestLoadBytesParsesMultiDocumentProvider(t *testing.T) {
 		"  environments:",
 		"    - demo-env",
 		"---",
-		"apiVersion: tinx.io/v1",
+		"apiVersion: kiox.io/v1",
 		"kind: Environment",
 		"metadata:",
 		"  name: demo-env",
@@ -155,7 +155,7 @@ func TestLoadBytesParsesMultiDocumentProvider(t *testing.T) {
 
 func TestLoadBytesParsesManagedInstallTool(t *testing.T) {
 	manifest := strings.Join([]string{
-		"apiVersion: tinx.io/v1",
+		"apiVersion: kiox.io/v1",
 		"kind: Provider",
 		"metadata:",
 		"  namespace: acme",
@@ -190,7 +190,7 @@ func TestLoadBytesParsesManagedInstallTool(t *testing.T) {
 		"            os: darwin",
 		"            arch: arm64",
 		"          source: bin/darwin/arm64/setup-kubectl",
-		"          mediaType: application/vnd.tinx.tool.binary",
+		"          mediaType: application/vnd.kiox.tool.binary",
 		"",
 	}, "\n")
 	pkg, err := LoadBytes([]byte(manifest))

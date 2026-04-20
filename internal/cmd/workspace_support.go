@@ -11,9 +11,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	cmdruntime "github.com/sourceplane/tinx/internal/runtime"
-	"github.com/sourceplane/tinx/internal/state"
-	"github.com/sourceplane/tinx/internal/workspace"
+	cmdruntime "github.com/sourceplane/kiox/internal/runtime"
+	"github.com/sourceplane/kiox/internal/state"
+	"github.com/sourceplane/kiox/internal/workspace"
 )
 
 type workspaceTarget struct {
@@ -63,7 +63,7 @@ func (target *workspaceTarget) MissingError() error {
 	if name == "" {
 		name = target.Root
 	}
-	return fmt.Errorf("workspace %q is missing: root %s no longer exists; run tinx workspace delete %q to unregister it", name, displayInventoryPath(target.Root), target.DeleteReference())
+	return fmt.Errorf("workspace %q is missing: root %s no longer exists; run kiox workspace delete %q to unregister it", name, displayInventoryPath(target.Root), target.DeleteReference())
 }
 
 func displayWorkspaceSummaryFilePath(path string) string {
@@ -151,7 +151,7 @@ func ensureGlobalHome(override string) (string, error) {
 }
 
 func ensureHome(override string) (string, error) {
-	if override != "" || os.Getenv("TINX_HOME") != "" {
+	if override != "" || os.Getenv("KIOX_HOME") != "" {
 		return ensureGlobalHome(override)
 	}
 	if discovery, err := workspace.Discover(mustGetwd()); err == nil && discovery != nil {
@@ -197,7 +197,7 @@ func runWorkspaceCommand(cmd *cobra.Command, root *rootOptions, command []string
 		return err
 	}
 	if target == nil {
-		return fmt.Errorf("no active workspace; run tinx workspace use <workspace> first or execute inside a workspace")
+		return fmt.Errorf("no active workspace; run kiox workspace use <workspace> first or execute inside a workspace")
 	}
 	if err := requireReadyWorkspaceTarget(target); err != nil {
 		return err

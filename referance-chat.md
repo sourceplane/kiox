@@ -1,19 +1,19 @@
 
-I want to improve tinx to support few new ideas to make it more useful.
+I want to improve kiox to support few new ideas to make it more useful.
 Provider contract to include a default binary/script and additional ones that can be either occ native or downloaded from by a setup script. Here is an example structure I am proposing. I want to understand how good it is and what modifications can be made to make it scalable.
 
-apiVersion: tinx.io/v1
+apiVersion: kiox.io/v1
 kind: Provider
 metadata:
   namespace: sourceplane
   name: setup-kubectl
   version: v0.1.0
-  description: Install and setup kubectl in tinx workspace
+  description: Install and setup kubectl in kiox workspace
 spec:
   tools:
     - name: setup-kubectl
       default: true
-      description: Install and setup kubectl in tinx workspace
+      description: Install and setup kubectl in kiox workspace
       runtime: local
       from: bundle.setup-kubectl
       capabilities:
@@ -93,15 +93,15 @@ spec:
 Here if it is better each of tool, assets, environment etc can be separate kind as well.
 With this approach for tools it will be downloaded from oci bundle if it is from bundle and default must be a oci one. If it is from script which means the tool will be downloaded using that script. Everything will be downloaded or kept in the global provider path and shims will be added to workspace path as before. 
 Use lazy install everything for faster setup and use cache. For example only when kubectl is invoked it should look for the shim which is added as part of the lazy install and if missing download it, if from bundle else use the script.
-For workspaces kind it is the same as what used for tinx init workspace.yaml. workspaces kind  can be used if additional workspaces to be installed from a provider. and tinx workspaces list will show that.
-assets to be added in the workspace path and cached in the tinx home.
+For workspaces kind it is the same as what used for kiox init workspace.yaml. workspaces kind  can be used if additional workspaces to be installed from a provider. and kiox workspaces list will show that.
+assets to be added in the workspace path and cached in the kiox home.
 
-dependencies should be installed befoe with the tools in the same way tinx provider add 
+dependencies should be installed befoe with the tools in the same way kiox provider add 
 
-environments to be set/added to the workspace environment file so that it will be available in a tinx shell.
+environments to be set/added to the workspace environment file so that it will be available in a kiox shell.
 secrets, same as env but should be saved encrypted in secrets standard. For secrets pull logic it can be implemented from a tool 
 
-bundle is used when packaging with tinx package or tinx build release etc. and can be referenced by other kinds. each should contain the type platform os arch and should then translated to the oci media type that then when downloading layers used to identify the layer and only download the needed layer to keep the downloaded data light as well as compress to make sure small bandwidth.
+bundle is used when packaging with kiox package or kiox build release etc. and can be referenced by other kinds. each should contain the type platform os arch and should then translated to the oci media type that then when downloading layers used to identify the layer and only download the needed layer to keep the downloaded data light as well as compress to make sure small bandwidth.
 
 Rearchitect and sugesust. 
 
@@ -148,7 +148,7 @@ Instead of one big Provider, define small, focused kinds.
 1. Provider = Distribution Unit (NOT behavior)
 Keep Provider minimal.
 
-apiVersion: tinx.io/v1
+apiVersion: kiox.io/v1
 kind: Provider
 metadata:
   name: setup-kubectl
@@ -181,7 +181,7 @@ workspace logic
 2. Tool = First-Class Runtime Unit
 This is your most important abstraction.
 
-apiVersion: tinx.io/v1
+apiVersion: kiox.io/v1
 kind: Tool
 metadata:
   name: kubectl
@@ -220,7 +220,7 @@ provides → enables aliasing / command mapping
 3. Bundle = OCI Layer Mapping (Decoupled)
 Move this OUT of Provider.
 
-apiVersion: tinx.io/v1
+apiVersion: kiox.io/v1
 kind: Bundle
 metadata:
   name: setup-kubectl
@@ -230,7 +230,7 @@ spec:
     - platform:
         os: linux
         arch: amd64
-      mediaType: application/vnd.tinx.tool.binary
+      mediaType: application/vnd.kiox.tool.binary
       source: bin/linux/amd64/kubectl
 Why this matters:
 Enables OCI-native optimization
@@ -240,7 +240,7 @@ Clean mapping to media types
 Independent evolution of packaging
 
 4. Asset = Filesystem Injection
-apiVersion: tinx.io/v1
+apiVersion: kiox.io/v1
 kind: Asset
 metadata:
   name: configs
@@ -250,11 +250,11 @@ spec:
     ref: layers.assets
 
   mount:
-    path: .tinx/assets/configs
+    path: .kiox/assets/configs
 👉 Explicit mount = predictable workspace behavior
 
 5. Environment = Scoped Config
-apiVersion: tinx.io/v1
+apiVersion: kiox.io/v1
 kind: Environment
 metadata:
   name: k8s
@@ -272,7 +272,7 @@ Explicit export avoids leaking everything
 Enables layering later (global → workspace → tool)
 
 6. Secret = External Reference (DO NOT over-design)
-apiVersion: tinx.io/v1
+apiVersion: kiox.io/v1
 kind: Secret
 metadata:
   name: kubeconfig
@@ -282,12 +282,12 @@ spec:
     KUBECONFIG_CONTENT: /path/to/secret
 👉 Important:
 
-tinx should NOT become a secret manager
+kiox should NOT become a secret manager
 
 just a resolver + injector
 
 7. Workspace = Composition Layer (User-facing)
-apiVersion: tinx.io/v1
+apiVersion: kiox.io/v1
 kind: Workspace
 metadata:
   name: devops
@@ -348,7 +348,7 @@ provides:
   - kubectl
 And resolution:
 
-tinx run kubectl → resolve provider that provides kubectl
+kiox run kubectl → resolve provider that provides kubectl
 👉 This enables:
 
 multiple providers offering same tool
@@ -394,7 +394,7 @@ These ideas are very strong and worth keeping:
 ✅ Platform-aware bundles
 
 🧠 Final Strategic Advice
-If you want tinx to be CNCF-grade:
+If you want kiox to be CNCF-grade:
 
 1. Think like Kubernetes
 small CRDs
@@ -420,7 +420,7 @@ global cache
 💡 One Big Idea (You should strongly consider)
 👉 Introduce a Resolver Engine
 
-tinx run kubectl
+kiox run kubectl
    ↓
 resolve provider
    ↓
@@ -437,11 +437,11 @@ If you want next step, I can:
 
 rewrite your full spec in clean CNCF-style
 
-define OCI media types for tinx
+define OCI media types for kiox
 
 design the resolver algorithm
 
-or map this to actual CLI (tinx run, tinx add, etc.)
+or map this to actual CLI (kiox run, kiox add, etc.)
 
 Just tell me 👍
 
@@ -452,7 +452,7 @@ Good question—and this is exactly the tension every system like this hits:
 
 “Clean architecture (many small kinds) vs usability (one file, easy to read)”
 
-If you go too Kubernetes, tinx becomes painful to use.
+If you go too Kubernetes, kiox becomes painful to use.
 If you keep everything in one file, it becomes unscalable internally.
 
 So the answer is not either/or — it’s a layered model.
@@ -482,8 +482,8 @@ versionable later
 
 This enables:
 
-tinx add tool kubectl
-tinx inspect tool kubectl
+kiox add tool kubectl
+kiox inspect tool kubectl
 👉 That’s impossible with inline lists.
 
 2. Dependency Graph (THIS IS THE REAL REASON)
@@ -538,7 +538,7 @@ This is where most systems fail (K8s included).
 👉 Keep one file, but use multiple kinds inside it.
 
 ---
-apiVersion: tinx.io/v1
+apiVersion: kiox.io/v1
 kind: Provider
 metadata:
   name: setup-kubectl
@@ -548,7 +548,7 @@ spec:
     - Tool: kubectl
 
 ---
-apiVersion: tinx.io/v1
+apiVersion: kiox.io/v1
 kind: Tool
 metadata:
   name: setup-kubectl
@@ -558,7 +558,7 @@ spec:
     ref: bundle.setup-kubectl
 
 ---
-apiVersion: tinx.io/v1
+apiVersion: kiox.io/v1
 kind: Tool
 metadata:
   name: kubectl
@@ -568,7 +568,7 @@ spec:
     script: setup-kubectl --version ${KUBECTL_VERSION}
 
 ---
-apiVersion: tinx.io/v1
+apiVersion: kiox.io/v1
 kind: Environment
 metadata:
   name: k8s
@@ -583,7 +583,7 @@ readable ✅
 
 no jumping files ✅
 
-✅ For tinx internals
+✅ For kiox internals
 structured objects ✅
 
 independent resolution ✅
@@ -618,7 +618,7 @@ Authoring (YAML)	user-friendly
 Internal Model	normalized graph
 👉 Never expose internal complexity directly.
 
-⚡ How tinx should process this
+⚡ How kiox should process this
 Step 1: Load file
 parse all documents
 
@@ -669,7 +669,7 @@ design the exact parsing + normalization algorithm
 
 define reference resolution rules
 
-or build a real tinx schema (CRD-style)
+or build a real kiox schema (CRD-style)
 
 Just tell me 👍
 
@@ -678,9 +678,9 @@ How to make the implimantaion also modular k8s style if I want to introduce a ki
 
 Now you’re asking the right systems question:
 
-“How do I make tinx internally modular so new runtimes (deno, wasm, container, etc.) can plug in cleanly?”
+“How do I make kiox internally modular so new runtimes (deno, wasm, container, etc.) can plug in cleanly?”
 
-This is where most tools fail. If you get this right, tinx becomes extensible like Kubernetes / containerd, not a monolith.
+This is where most tools fail. If you get this right, kiox becomes extensible like Kubernetes / containerd, not a monolith.
 
 🧠 Core Principle
 Separate “what” from “how”
@@ -700,10 +700,10 @@ Terraform → providers
 
 uv → backend resolvers
 
-👉 tinx needs a Runtime Interface (RTI)
+👉 kiox needs a Runtime Interface (RTI)
 
 🧱 1. Define Runtime Contract (Core Interface)
-This is the most important abstraction in tinx.
+This is the most important abstraction in kiox.
 
 // pseudo Go/TS hybrid
 
@@ -719,16 +719,16 @@ interface Runtime {
   isInstalled(resolved: ResolvedTool, ctx: RuntimeContext): Promise<boolean>
 }
 🔥 Why this is powerful
-Now tinx core does:
+Now kiox core does:
 
-tinx run kubectl
+kiox run kubectl
    ↓
 resolver → Tool
    ↓
 runtime = "script"
    ↓
 runtime.execute()
-👉 tinx does NOT care how it runs.
+👉 kiox does NOT care how it runs.
 
 🧩 2. Runtime Types (Your extensibility point)
 You can now implement:
@@ -776,7 +776,7 @@ class RuntimeRegistry {
     return this.runtimes.get(name)
   }
 }
-⚙️ 4. tinx Core Engine (Minimal)
+⚙️ 4. kiox Core Engine (Minimal)
 async function run(toolName: string, args: string[]) {
   const tool = resolveTool(toolName)
 
@@ -812,12 +812,12 @@ spec:
 
   source:
     script: https://deno.land/std/fmt/mod.ts
-👉 No tinx core change needed 🚀
+👉 No kiox core change needed 🚀
 
 🧠 6. Layered Modularity (VERY IMPORTANT)
-Split tinx into modules:
+Split kiox into modules:
 
-tinx/
+kiox/
  ├── core/            # resolver, graph, engine
  ├── runtime/         # runtime interface
  ├── runtimes/
@@ -840,7 +840,7 @@ Option A: Built-in plugins
 compiled into binary
 
 Option B: External plugins
-tinx runtime install deno
+kiox runtime install deno
 👉 Similar to:
 
 kubectl plugin
@@ -896,7 +896,7 @@ kubectl → runtime: local + dependsOn setup tool
                ↓
    resolve → install → execute
 💡 One Big Idea (Take this seriously)
-tinx is not a tool manager — it is a runtime orchestration engine
+kiox is not a tool manager — it is a runtime orchestration engine
 
 Like:
 
@@ -915,7 +915,7 @@ design OCI media types for runtimes
 
 define plugin loading system (Go + WASI + exec)
 
-or write a real tinx runtime SDK spec
+or write a real kiox runtime SDK spec
 
 Just say 👍
 

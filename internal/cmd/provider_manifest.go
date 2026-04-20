@@ -8,7 +8,7 @@ import (
 
 const (
 	preferredProviderManifestName = "provider.yaml"
-	legacyProviderManifestName    = "tinx.yaml"
+	legacyProviderManifestName    = "kiox.yaml"
 )
 
 func resolveProviderManifestPath(path string) (string, error) {

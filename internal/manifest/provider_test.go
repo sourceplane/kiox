@@ -9,9 +9,9 @@ import (
 
 func TestLoadProvider(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "tinx.yaml")
+	path := filepath.Join(dir, "kiox.yaml")
 	content := strings.Join([]string{
-		"apiVersion: tinx.io/v1",
+		"apiVersion: kiox.io/v1",
 		"kind: Provider",
 		"metadata:",
 		"  namespace: sourceplane",
@@ -56,8 +56,8 @@ func TestLoadProvider(t *testing.T) {
 
 func TestLoadProviderRequiresPlatforms(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "tinx.yaml")
-	content := `apiVersion: tinx.io/v1
+	path := filepath.Join(dir, "kiox.yaml")
+	content := `apiVersion: kiox.io/v1
 kind: Provider
 metadata:
   namespace: sourceplane

@@ -10,7 +10,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/sourceplane/tinx/internal/parser"
+	"github.com/sourceplane/kiox/internal/parser"
 )
 
 type GoReleaserOptions struct {
@@ -118,7 +118,7 @@ type generatedToggle struct {
 func generateGoReleaserConfigFromManifest(moduleRoot, manifestPath string) (string, error) {
 	resolvedManifest := manifestPath
 	if resolvedManifest == "" {
-		for _, candidate := range []string{"provider.yaml", "tinx.yaml"} {
+		for _, candidate := range []string{"provider.yaml", "kiox.yaml"} {
 			candidatePath := filepath.Join(moduleRoot, candidate)
 			if _, err := os.Stat(candidatePath); err == nil {
 				resolvedManifest = candidatePath
@@ -156,7 +156,7 @@ func generateGoReleaserConfigFromManifest(moduleRoot, manifestPath string) (stri
 		return "", fmt.Errorf("encode generated goreleaser config: %w", err)
 	}
 
-	path := filepath.Join(moduleRoot, ".goreleaser.tinx.generated.yaml")
+	path := filepath.Join(moduleRoot, ".goreleaser.kiox.generated.yaml")
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return "", fmt.Errorf("write generated goreleaser config: %w", err)
 	}

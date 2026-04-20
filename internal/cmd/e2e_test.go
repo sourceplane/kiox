@@ -12,18 +12,18 @@ import (
 
 	gcrregistry "github.com/google/go-containerregistry/pkg/registry"
 
-	"github.com/sourceplane/tinx/internal/state"
+	"github.com/sourceplane/kiox/internal/state"
 )
 
 func TestReleaseAndInstallLocalLayout(t *testing.T) {
 	workspace := t.TempDir()
-	home := filepath.Join(workspace, ".tinx-home")
+	home := filepath.Join(workspace, ".kiox-home")
 	providerDir := copyTestProvider(t, workspace)
 
 	releaseBuf := runRootCommand(t, []string{
-		"--tinx-home", home,
+		"--kiox-home", home,
 		"release",
-		"--manifest", filepath.Join(providerDir, "tinx.yaml"),
+		"--manifest", filepath.Join(providerDir, "kiox.yaml"),
 		"--dist", filepath.Join(providerDir, "dist"),
 		"--output", filepath.Join(providerDir, "oci"),
 	})
@@ -32,7 +32,7 @@ func TestReleaseAndInstallLocalLayout(t *testing.T) {
 	}
 
 	installBuf := runRootCommand(t, []string{
-		"--tinx-home", home,
+		"--kiox-home", home,
 		"install", "echo", "sourceplane/echo-provider",
 		"--source", filepath.Join(providerDir, "oci"),
 	})
@@ -46,7 +46,7 @@ func TestReleaseAndInstallLocalLayout(t *testing.T) {
 	for _, expected := range []string{
 		filepath.Join(home, "providers", "sourceplane", "echo-provider", "v0.1.0", "metadata.json"),
 		filepath.Join(meta.StorePath, "oci", "index.json"),
-		filepath.Join(meta.StorePath, "tinx.yaml"),
+		filepath.Join(meta.StorePath, "kiox.yaml"),
 	} {
 		if _, err := os.Stat(expected); err != nil {
 			t.Fatalf("expected installed artifact %s: %v", expected, err)
@@ -56,7 +56,7 @@ func TestReleaseAndInstallLocalLayout(t *testing.T) {
 
 func TestReleaseDelegatesToGoReleaser(t *testing.T) {
 	workspace := t.TempDir()
-	home := filepath.Join(workspace, ".tinx-home")
+	home := filepath.Join(workspace, ".kiox-home")
 	providerDir := copyTestProvider(t, workspace)
 	binDir := filepath.Join(workspace, "bin")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
@@ -79,9 +79,9 @@ cp dist/bin/darwin/amd64/echo-provider dist/bin/linux/arm64/echo-provider
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+originalPath)
 
 	releaseBuf := runRootCommand(t, []string{
-		"--tinx-home", home,
+		"--kiox-home", home,
 		"release",
-		"--manifest", filepath.Join(providerDir, "tinx.yaml"),
+		"--manifest", filepath.Join(providerDir, "kiox.yaml"),
 		"--dist", filepath.Join(providerDir, "artifacts"),
 		"--output", filepath.Join(providerDir, "oci"),
 		"--delegate-goreleaser",
@@ -100,7 +100,7 @@ cp dist/bin/darwin/amd64/echo-provider dist/bin/linux/arm64/echo-provider
 
 func TestReleaseDelegatesToGeneratedGoReleaserConfig(t *testing.T) {
 	workspace := t.TempDir()
-	home := filepath.Join(workspace, ".tinx-home")
+	home := filepath.Join(workspace, ".kiox-home")
 	providerDir := copyTestProvider(t, workspace)
 	if err := os.Remove(filepath.Join(providerDir, ".goreleaser.yaml")); err != nil && !os.IsNotExist(err) {
 		t.Fatal(err)
@@ -145,9 +145,9 @@ cp dist/bin/darwin/amd64/echo-provider dist/bin/linux/arm64/echo-provider
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+originalPath)
 
 	releaseBuf := runRootCommand(t, []string{
-		"--tinx-home", home,
+		"--kiox-home", home,
 		"release",
-		"--manifest", filepath.Join(providerDir, "tinx.yaml"),
+		"--manifest", filepath.Join(providerDir, "kiox.yaml"),
 		"--dist", filepath.Join(providerDir, "artifacts"),
 		"--output", filepath.Join(providerDir, "oci"),
 		"--delegate-goreleaser",
@@ -155,7 +155,7 @@ cp dist/bin/darwin/amd64/echo-provider dist/bin/linux/arm64/echo-provider
 	if !bytes.Contains(releaseBuf.Bytes(), []byte("released sourceplane/echo-provider")) {
 		t.Fatalf("unexpected release output: %s", releaseBuf.String())
 	}
-	if _, err := os.Stat(filepath.Join(providerDir, ".goreleaser.tinx.generated.yaml")); err != nil {
+	if _, err := os.Stat(filepath.Join(providerDir, ".goreleaser.kiox.generated.yaml")); err != nil {
 		t.Fatalf("expected generated goreleaser config: %v", err)
 	}
 	logged, err := os.ReadFile(logPath)
@@ -169,7 +169,7 @@ cp dist/bin/darwin/amd64/echo-provider dist/bin/linux/arm64/echo-provider
 
 func TestReleasePushAndInstallFromRegistry(t *testing.T) {
 	workspace := t.TempDir()
-	home := filepath.Join(workspace, ".tinx-home")
+	home := filepath.Join(workspace, ".kiox-home")
 	providerDir := copyTestProvider(t, workspace)
 	server := httptest.NewServer(gcrregistry.New())
 	defer server.Close()
@@ -177,9 +177,9 @@ func TestReleasePushAndInstallFromRegistry(t *testing.T) {
 	ref := registryHost + "/sourceplane/echo-provider:v0.1.0"
 
 	releaseBuf := runRootCommand(t, []string{
-		"--tinx-home", home,
+		"--kiox-home", home,
 		"release",
-		"--manifest", filepath.Join(providerDir, "tinx.yaml"),
+		"--manifest", filepath.Join(providerDir, "kiox.yaml"),
 		"--dist", filepath.Join(providerDir, "dist"),
 		"--output", filepath.Join(providerDir, "oci"),
 		"--push", ref,
@@ -190,7 +190,7 @@ func TestReleasePushAndInstallFromRegistry(t *testing.T) {
 	}
 
 	installBuf := runRootCommand(t, []string{
-		"--tinx-home", home,
+		"--kiox-home", home,
 		"install", "echo", ref,
 		"--plain-http",
 	})
@@ -198,7 +198,7 @@ func TestReleasePushAndInstallFromRegistry(t *testing.T) {
 		t.Fatalf("unexpected install output: %s", installBuf.String())
 	}
 
-	listBuf := runRootCommand(t, []string{"--tinx-home", home, "provider", "list", "default"})
+	listBuf := runRootCommand(t, []string{"--kiox-home", home, "provider", "list", "default"})
 	for _, expected := range [][]byte{
 		[]byte("Scope: default"),
 		[]byte("sourceplane/echo-provider"),
@@ -212,7 +212,7 @@ func TestReleasePushAndInstallFromRegistry(t *testing.T) {
 
 func TestInstallUsesCachedRemoteProvider(t *testing.T) {
 	workspace := t.TempDir()
-	home := filepath.Join(workspace, ".tinx-home")
+	home := filepath.Join(workspace, ".kiox-home")
 	providerDir := copyTestProvider(t, workspace)
 	server := httptest.NewServer(gcrregistry.New())
 	defer server.Close()
@@ -220,9 +220,9 @@ func TestInstallUsesCachedRemoteProvider(t *testing.T) {
 	ref := registryHost + "/sourceplane/echo-provider:v0.1.0"
 
 	releaseBuf := runRootCommand(t, []string{
-		"--tinx-home", home,
+		"--kiox-home", home,
 		"release",
-		"--manifest", filepath.Join(providerDir, "tinx.yaml"),
+		"--manifest", filepath.Join(providerDir, "kiox.yaml"),
 		"--dist", filepath.Join(providerDir, "dist"),
 		"--output", filepath.Join(providerDir, "oci"),
 		"--push", ref,
@@ -233,7 +233,7 @@ func TestInstallUsesCachedRemoteProvider(t *testing.T) {
 	}
 
 	firstInstallBuf := runRootCommand(t, []string{
-		"--tinx-home", home,
+		"--kiox-home", home,
 		"install", ref,
 		"--plain-http",
 	})
@@ -244,7 +244,7 @@ func TestInstallUsesCachedRemoteProvider(t *testing.T) {
 	server.Close()
 
 	secondInstallBuf := runRootCommand(t, []string{
-		"--tinx-home", home,
+		"--kiox-home", home,
 		"install", "ci", ref,
 		"--plain-http",
 	})
@@ -254,9 +254,9 @@ func TestInstallUsesCachedRemoteProvider(t *testing.T) {
 }
 
 func TestInstallRejectsProviderSourceSchemes(t *testing.T) {
-	home := filepath.Join(t.TempDir(), ".tinx-home")
+	home := filepath.Join(t.TempDir(), ".kiox-home")
 	buf := new(bytes.Buffer)
-	err := executeCLI(context.Background(), []string{"--tinx-home", home, "install", "tool", "custom://acme/setup@v1"}, buf, buf)
+	err := executeCLI(context.Background(), []string{"--kiox-home", home, "install", "tool", "custom://acme/setup@v1"}, buf, buf)
 	if err == nil {
 		t.Fatal("expected install to reject provider source scheme")
 	}
@@ -266,9 +266,9 @@ func TestInstallRejectsProviderSourceSchemes(t *testing.T) {
 }
 
 func TestInstallRejectsStandaloneExecutionAfterDash(t *testing.T) {
-	home := filepath.Join(t.TempDir(), ".tinx-home")
+	home := filepath.Join(t.TempDir(), ".kiox-home")
 	buf := new(bytes.Buffer)
-	err := executeCLI(context.Background(), []string{"--tinx-home", home, "install", "sourceplane/echo-provider", "--", "echo-provider", "plan"}, buf, buf)
+	err := executeCLI(context.Background(), []string{"--kiox-home", home, "install", "sourceplane/echo-provider", "--", "echo-provider", "plan"}, buf, buf)
 	if err == nil {
 		t.Fatal("expected install to reject standalone execution")
 	}
@@ -278,25 +278,25 @@ func TestInstallRejectsStandaloneExecutionAfterDash(t *testing.T) {
 }
 
 func TestRunCommandRemoved(t *testing.T) {
-	home := filepath.Join(t.TempDir(), ".tinx-home")
+	home := filepath.Join(t.TempDir(), ".kiox-home")
 	buf := new(bytes.Buffer)
-	err := executeCLI(context.Background(), []string{"--tinx-home", home, "run", "sourceplane/echo-provider", "plan"}, buf, buf)
+	err := executeCLI(context.Background(), []string{"--kiox-home", home, "run", "sourceplane/echo-provider", "plan"}, buf, buf)
 	if err == nil {
 		t.Fatal("expected run to be rejected")
 	}
-	if !strings.Contains(err.Error(), "'tinx run' has been removed") {
+	if !strings.Contains(err.Error(), "'kiox run' has been removed") {
 		t.Fatalf("unexpected run error: %v", err)
 	}
 }
 
 func TestUnknownTopLevelCommandUsesCobraError(t *testing.T) {
-	home := filepath.Join(t.TempDir(), ".tinx-home")
+	home := filepath.Join(t.TempDir(), ".kiox-home")
 	buf := new(bytes.Buffer)
-	err := executeCLI(context.Background(), []string{"--tinx-home", home, "echo-provider", "plan"}, buf, buf)
+	err := executeCLI(context.Background(), []string{"--kiox-home", home, "echo-provider", "plan"}, buf, buf)
 	if err == nil {
 		t.Fatal("expected unknown command error")
 	}
-	if !strings.Contains(err.Error(), "unknown command \"echo-provider\" for \"tinx\"") {
+	if !strings.Contains(err.Error(), "unknown command \"echo-provider\" for \"kiox\"") {
 		t.Fatalf("unexpected unknown command error: %v", err)
 	}
 }

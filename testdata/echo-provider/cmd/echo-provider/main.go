@@ -12,5 +12,5 @@ func main() {
 		fmt.Println("no capability")
 		return
 	}
-	fmt.Printf("capability=%s args=%s home=%s\n", args[0], strings.Join(args[1:], ","), os.Getenv("TINX_PROVIDER_HOME"))
+	fmt.Printf("capability=%s args=%s home=%s\n", args[0], strings.Join(args[1:], ","), os.Getenv("KIOX_PROVIDER_HOME"))
 }

@@ -2,8 +2,8 @@
 
 # Local build/test artifacts
 bin/
-.tinx-home/
-tinx
+.kiox-home/
+kiox
 
 # Example provider build output
 testdata/echo-provider/dist/

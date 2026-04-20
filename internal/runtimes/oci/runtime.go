@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/sourceplane/tinx/internal/core"
-	internaloci "github.com/sourceplane/tinx/internal/oci"
-	truntime "github.com/sourceplane/tinx/internal/runtime"
-	"github.com/sourceplane/tinx/internal/state"
+	"github.com/sourceplane/kiox/internal/core"
+	internaloci "github.com/sourceplane/kiox/internal/oci"
+	truntime "github.com/sourceplane/kiox/internal/runtime"
+	"github.com/sourceplane/kiox/internal/state"
 )
 
 type Plugin struct{}

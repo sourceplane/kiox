@@ -19,15 +19,15 @@ import (
 	"oras.land/oras-go/v2/registry/remote/auth"
 	"oras.land/oras-go/v2/registry/remote/credentials"
 
-	"github.com/sourceplane/tinx/internal/core"
-	"github.com/sourceplane/tinx/internal/state"
-	"github.com/sourceplane/tinx/internal/ui/progress"
+	"github.com/sourceplane/kiox/internal/core"
+	"github.com/sourceplane/kiox/internal/state"
+	"github.com/sourceplane/kiox/internal/ui/progress"
 )
 
-const registryDockerAuthEnv = "TINX_REGISTRY_DOCKER_AUTH"
+const registryDockerAuthEnv = "KIOX_REGISTRY_DOCKER_AUTH"
 
 const (
-	registryCopyConcurrencyEnv     = "TINX_REGISTRY_COPY_CONCURRENCY"
+	registryCopyConcurrencyEnv     = "KIOX_REGISTRY_COPY_CONCURRENCY"
 	defaultRegistryCopyConcurrency = 2
 )
 
@@ -176,7 +176,7 @@ func InstallRemoteFull(ctx context.Context, activationHome, storeHome, ref, alia
 }
 
 func installRemote(ctx context.Context, activationHome, storeHome, ref, alias string, plainHTTP, metadataOnly bool, tracker *progress.Tracker) (state.ProviderMetadata, error) {
-	tempDir, err := os.MkdirTemp("", "tinx-oci-*")
+	tempDir, err := os.MkdirTemp("", "kiox-oci-*")
 	if err != nil {
 		return state.ProviderMetadata{}, fmt.Errorf("create temp OCI layout: %w", err)
 	}
@@ -334,13 +334,13 @@ func isMetadataDescriptor(descriptor ocispec.Descriptor) bool {
 }
 
 func descriptorPlatform(descriptor ocispec.Descriptor) (string, string, bool) {
-	if raw := strings.TrimSpace(descriptor.Annotations["io.tinx.platform"]); raw != "" {
+	if raw := strings.TrimSpace(descriptor.Annotations["io.kiox.platform"]); raw != "" {
 		parts := strings.SplitN(raw, "/", 2)
 		if len(parts) == 2 && strings.TrimSpace(parts[0]) != "" && strings.TrimSpace(parts[1]) != "" {
 			return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]), true
 		}
 	}
-	const prefix = "application/vnd.tinx.provider.binary."
+	const prefix = "application/vnd.kiox.provider.binary."
 	const suffix = ".v1"
 	mediaType := strings.TrimSpace(descriptor.MediaType)
 	if !strings.HasPrefix(mediaType, prefix) || !strings.HasSuffix(mediaType, suffix) {
@@ -486,7 +486,7 @@ func updateAlias(home, alias string, meta state.ProviderMetadata) error {
 }
 
 func hydrateStoreFromRemote(ctx context.Context, layoutPath, ref string, plainHTTP bool, selection remoteCopySelection, tracker *progress.Tracker, detail string) error {
-	tempDir, err := os.MkdirTemp("", "tinx-oci-hydrate-*")
+	tempDir, err := os.MkdirTemp("", "kiox-oci-hydrate-*")
 	if err != nil {
 		return fmt.Errorf("create temp OCI layout: %w", err)
 	}
@@ -501,7 +501,7 @@ func hydrateStoreFromRemote(ctx context.Context, layoutPath, ref string, plainHT
 }
 
 func credentialFromEnv(hostport string) (auth.Credential, bool) {
-	if username, password := os.Getenv("TINX_REGISTRY_USERNAME"), os.Getenv("TINX_REGISTRY_PASSWORD"); username != "" && password != "" {
+	if username, password := os.Getenv("KIOX_REGISTRY_USERNAME"), os.Getenv("KIOX_REGISTRY_PASSWORD"); username != "" && password != "" {
 		return auth.Credential{Username: username, Password: password}, true
 	}
 	if username, password := os.Getenv("ORAS_USERNAME"), os.Getenv("ORAS_PASSWORD"); username != "" && password != "" {

@@ -1,10 +1,10 @@
 package runtimes
 
 import (
-	"github.com/sourceplane/tinx/internal/runtime"
-	runtimelocal "github.com/sourceplane/tinx/internal/runtimes/local"
-	runtimeoci "github.com/sourceplane/tinx/internal/runtimes/oci"
-	runtimescript "github.com/sourceplane/tinx/internal/runtimes/script"
+	"github.com/sourceplane/kiox/internal/runtime"
+	runtimelocal "github.com/sourceplane/kiox/internal/runtimes/local"
+	runtimeoci "github.com/sourceplane/kiox/internal/runtimes/oci"
+	runtimescript "github.com/sourceplane/kiox/internal/runtimes/script"
 )
 
 func NewBuiltinRegistry() (*runtime.Registry, error) {

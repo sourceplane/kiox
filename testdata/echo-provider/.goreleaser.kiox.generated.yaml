@@ -13,7 +13,7 @@ builds:
         - amd64
         - arm64
       ldflags:
-        - -s -w -X github.com/sourceplane/tinx/pkg/version.Version=v0.1.0
+        - -s -w -X github.com/sourceplane/kiox/pkg/version.Version=v0.1.0
       hooks:
         post:
             - mkdir -p dist/bin/{{ .Os }}/{{ .Arch }}

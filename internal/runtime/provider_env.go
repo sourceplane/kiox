@@ -7,9 +7,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/sourceplane/tinx/internal/core"
-	"github.com/sourceplane/tinx/internal/oci"
-	"github.com/sourceplane/tinx/internal/state"
+	"github.com/sourceplane/kiox/internal/core"
+	"github.com/sourceplane/kiox/internal/oci"
+	"github.com/sourceplane/kiox/internal/state"
 )
 
 type ProviderEnvironmentSpec struct {

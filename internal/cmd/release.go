@@ -9,10 +9,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/sourceplane/tinx/internal/build"
-	"github.com/sourceplane/tinx/internal/core"
-	"github.com/sourceplane/tinx/internal/oci"
-	"github.com/sourceplane/tinx/internal/parser"
+	"github.com/sourceplane/kiox/internal/build"
+	"github.com/sourceplane/kiox/internal/core"
+	"github.com/sourceplane/kiox/internal/oci"
+	"github.com/sourceplane/kiox/internal/parser"
 )
 
 func newReleaseCommand() *cobra.Command {
@@ -85,7 +85,7 @@ func newReleaseCommand() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&manifestPath, "manifest", preferredProviderManifestName, "path to provider.yaml (legacy tinx.yaml also supported)")
+	cmd.Flags().StringVar(&manifestPath, "manifest", preferredProviderManifestName, "path to provider.yaml (legacy kiox.yaml also supported)")
 	cmd.Flags().StringVar(&outputDir, "output", "oci", "output OCI image layout directory")
 	cmd.Flags().StringVar(&distDir, "dist", "dist", "build output directory used before packaging")
 	cmd.Flags().StringVar(&mainPkg, "main", "", "Go main package to build")

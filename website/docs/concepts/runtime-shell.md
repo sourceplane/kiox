@@ -2,7 +2,7 @@
 title: Runtime shell
 ---
 
-The **runtime** is the execution layer of tinx.
+The **runtime** is the execution layer of kiox.
 
 It turns workspace and provider state into a working shell environment.
 
@@ -72,14 +72,14 @@ The workspace path file contains the static shell path order:
 2. provider and environment path entries
 3. host `PATH`
 
-When a shim resolves a tool plan, tinx can add extra tool-specific directories for that launched process. That is how lazily installed tools become executable without rewriting the workspace path file on every run.
+When a shim resolves a tool plan, kiox can add extra tool-specific directories for that launched process. That is how lazily installed tools become executable without rewriting the workspace path file on every run.
 
 ## Commands that enter the runtime
 
 ```bash
-tinx shell
-tinx exec node build
-tinx -- node build
+kiox shell
+kiox exec node build
+kiox -- node build
 ```
 
 ## Environment construction
@@ -94,16 +94,16 @@ It rebuilds those artifacts whenever the workspace is synced.
 
 Runtime variables include:
 
-- `TINX_HOME`
-- `TINX_WORKSPACE_ROOT`
-- `TINX_WORKSPACE_HOME`
-- `TINX_WORKSPACE_ENV_FILE`
-- `TINX_WORKSPACE_PATH_FILE`
-- `TINX_PROVIDER_<ALIAS>_REF`
-- `TINX_PROVIDER_<ALIAS>_HOME`
-- `TINX_PROVIDER_<ALIAS>_BINARY`
+- `KIOX_HOME`
+- `KIOX_WORKSPACE_ROOT`
+- `KIOX_WORKSPACE_HOME`
+- `KIOX_WORKSPACE_ENV_FILE`
+- `KIOX_WORKSPACE_PATH_FILE`
+- `KIOX_PROVIDER_<ALIAS>_REF`
+- `KIOX_PROVIDER_<ALIAS>_HOME`
+- `KIOX_PROVIDER_<ALIAS>_BINARY`
 
-`TINX_PROVIDER_<ALIAS>_BINARY` points at the resolved default tool path and may not exist yet for lazily materialized tools.
+`KIOX_PROVIDER_<ALIAS>_BINARY` points at the resolved default tool path and may not exist yet for lazily materialized tools.
 
 ## Built-in runtime plugins
 

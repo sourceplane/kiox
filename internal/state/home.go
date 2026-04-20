@@ -10,14 +10,14 @@ func ResolveHome(override string) (string, error) {
 	if override != "" {
 		return override, nil
 	}
-	if env := os.Getenv("TINX_HOME"); env != "" {
+	if env := os.Getenv("KIOX_HOME"); env != "" {
 		return env, nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve home directory: %w", err)
 	}
-	return filepath.Join(home, ".tinx"), nil
+	return filepath.Join(home, ".kiox"), nil
 }
 
 func EnsureHome(root string) error {
