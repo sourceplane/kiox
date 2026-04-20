@@ -5,6 +5,7 @@
   "name": "echo-provider",
   "version": "v0.1.0",
   "description": "Test provider for kiox packaging and installation",
-  "runtime": "binary",
-  "entrypoint": "echo-provider"
+  "runtime": "oci",
+  "entrypoint": "echo-provider",
+  "defaultTool": "echo-provider"
 }
