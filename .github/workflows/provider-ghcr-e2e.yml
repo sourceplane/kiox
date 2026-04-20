@@ -136,6 +136,8 @@ jobs:
               python3 -m http.server 18080 --bind 127.0.0.1 --directory "$server_root" >/tmp/kubectl-server.log 2>&1 &
               server_pid=$!
               trap 'kill "$server_pid"' EXIT
+              curl -fsS --retry 10 --retry-connrefused --retry-delay 1 \
+                "http://127.0.0.1:18080/stable-1.29.txt" >/dev/null
               KUBECTL_RELEASE_BASE_URL="http://127.0.0.1:18080" KUBECTL_VERSION="1.29" \
                 ../../bin/kiox --kiox-home "$home" --workspace "$workspace_root" -- kubectl version --client | tee "$RUNNER_TEMP/kubectl-run.out"
               grep -q 'kubectl-version=v1.29.15' "$RUNNER_TEMP/kubectl-run.out"
