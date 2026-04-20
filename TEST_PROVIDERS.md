@@ -12,7 +12,7 @@ make build
 
 ```bash
 ./bin/kiox release \
-  --manifest testdata/echo-provider/kiox.yaml \
+  --manifest testdata/echo-provider/provider.yaml \
   --dist testdata/echo-provider/dist \
   --output testdata/echo-provider/oci
 
@@ -26,7 +26,7 @@ make build
 
 ```bash
 ./bin/kiox release \
-  --manifest testdata/multi-tool-provider/kiox.yaml \
+  --manifest testdata/multi-tool-provider/provider.yaml \
   --dist testdata/multi-tool-provider/dist \
   --output testdata/multi-tool-provider/oci
 
@@ -40,7 +40,7 @@ make build
 
 ```bash
 ./bin/kiox release \
-  --manifest testdata/inline-tool-provider/kiox.yaml \
+  --manifest testdata/inline-tool-provider/provider.yaml \
   --dist testdata/inline-tool-provider/dist \
   --output testdata/inline-tool-provider/oci
 
@@ -54,7 +54,7 @@ make build
 
 ```bash
 ./bin/kiox release \
-  --manifest testdata/setup-kubectl/kiox.yaml \
+  --manifest testdata/setup-kubectl/provider.yaml \
   --dist testdata/setup-kubectl/dist \
   --output testdata/setup-kubectl/oci
 

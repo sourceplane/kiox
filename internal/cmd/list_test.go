@@ -260,7 +260,7 @@ func releaseStandaloneProviderLayout(t *testing.T, home, providerDir string) str
 	buf := runRootCommand(t, []string{
 		"--kiox-home", home,
 		"release",
-		"--manifest", filepath.Join(providerDir, "kiox.yaml"),
+		"--manifest", providerManifestPath(providerDir),
 		"--dist", filepath.Join(providerDir, "dist"),
 		"--output", layoutPath,
 	})

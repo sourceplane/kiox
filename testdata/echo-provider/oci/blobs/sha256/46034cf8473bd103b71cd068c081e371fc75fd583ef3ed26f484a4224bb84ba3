@@ -10,10 +10,10 @@
   "layers": [
     {
       "mediaType": "application/vnd.kiox.provider.manifest.v1+yaml",
-      "digest": "sha256:92844f8772c315b992d38eaa5334593d8c2e310ee38956a80572b4752b6370a9",
-      "size": 661,
+      "digest": "sha256:3dbbc7b8a603035dbb088a3559c2cecb561ae1b9f28f4d0089c4ec7e90e3b29c",
+      "size": 660,
       "annotations": {
-        "org.opencontainers.image.title": "kiox.yaml"
+        "org.opencontainers.image.title": "provider.yaml"
       }
     },
     {
@@ -26,7 +26,7 @@
     },
     {
       "mediaType": "application/vnd.kiox.provider.binary.darwin.amd64.v1",
-      "digest": "sha256:829c6bffefb952e06d100d3f598f245b6c585ca9324612fa9872e5b1bbbcefc7",
+      "digest": "sha256:f3aba54e65a4aa0744c1bf19942f5019e9f1e91585d42816889aadff9dc3aa46",
       "size": 1622256,
       "annotations": {
         "io.kiox.bundle": "echo-provider",
@@ -37,7 +37,7 @@
     },
     {
       "mediaType": "application/vnd.kiox.provider.binary.darwin.arm64.v1",
-      "digest": "sha256:2dff1df1c90cf2461ab8021dab75ac1135354f92560f96bcfc3a937b2f1e78fd",
+      "digest": "sha256:072186402d006637b054573874f2d0a7329aefaaa9b977202df6037586e90597",
       "size": 1606418,
       "annotations": {
         "io.kiox.bundle": "echo-provider",
@@ -48,7 +48,7 @@
     },
     {
       "mediaType": "application/vnd.kiox.provider.binary.linux.amd64.v1",
-      "digest": "sha256:9a5113a56bed51a02f651b776ba2fff93c6cccd81a5f5bf9d7879a88acdf5e28",
+      "digest": "sha256:54f8cf00c476731da8b1ed3ed8bf5e242b869e60c05da5490280ff2e83c2b2b7",
       "size": 1511608,
       "annotations": {
         "io.kiox.bundle": "echo-provider",
@@ -59,7 +59,7 @@
     },
     {
       "mediaType": "application/vnd.kiox.provider.binary.linux.arm64.v1",
-      "digest": "sha256:3f1f729a993f1d5692370615d3dafaee97b9e6cc4004c98de79826cb8cbc38ed",
+      "digest": "sha256:d9d0a3ad15bce24de16818be95bb9032801d66c9a4026857308362b6f8576900",
       "size": 1573048,
       "annotations": {
         "io.kiox.bundle": "echo-provider",
@@ -70,7 +70,7 @@
     },
     {
       "mediaType": "application/vnd.kiox.asset.layer.v1+tar",
-      "digest": "sha256:35df82134d8aa2f4178132cbd3771146fbe2937959b875609e6f111cde2cff45",
+      "digest": "sha256:92265185032b1b0825031d13323906d509eec4016a13825468d8930df47f8972",
       "size": 2560,
       "annotations": {
         "io.kiox.bundle": "echo-provider",

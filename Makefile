@@ -46,7 +46,7 @@ test-core:
 
 release-example: build
 	./$(KIOX_BIN) release \
-		--manifest $(ECHO_PROVIDER_DIR)/kiox.yaml \
+		--manifest $(ECHO_PROVIDER_DIR)/provider.yaml \
 		--main ./cmd/echo-provider \
 		--dist $(ECHO_PROVIDER_DIST) \
 		--output $(ECHO_PROVIDER_OCI)
@@ -61,7 +61,7 @@ e2e-local: run-example
 
 ghcr-push: build
 	./$(KIOX_BIN) release \
-		--manifest $(ECHO_PROVIDER_DIR)/kiox.yaml \
+		--manifest $(ECHO_PROVIDER_DIR)/provider.yaml \
 		--main ./cmd/echo-provider \
 		--dist $(ECHO_PROVIDER_DIST) \
 		--output $(ECHO_PROVIDER_OCI) \
