@@ -65,7 +65,7 @@ Build kiox and package the normalized multi-tool fixture:
 ```bash
 make build
 ./bin/kiox release \
-	--manifest testdata/multi-tool-provider/kiox.yaml \
+	--manifest testdata/multi-tool-provider/provider.yaml \
 	--dist testdata/multi-tool-provider/dist \
 	--output testdata/multi-tool-provider/oci
 ```

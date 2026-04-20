@@ -1,6 +1,7 @@
 name: provider-ghcr-e2e
 
 on:
+  pull_request:
   push:
     branches:
       - main
@@ -12,7 +13,32 @@ permissions:
 
 jobs:
   push-install-run:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - provider: echo-provider
+            alias: echo
+            provider_ref: sourceplane/echo-provider
+            release_repo: kiox-echo-provider
+            main_package: ./cmd/echo-provider
+          - provider: multi-tool-provider
+            alias: echo
+            provider_ref: acme/multi-tool-provider
+            release_repo: kiox-multi-tool-provider
+            main_package: ""
+          - provider: inline-tool-provider
+            alias: inline
+            provider_ref: acme/inline-tool-provider
+            release_repo: kiox-inline-tool-provider
+            main_package: ""
+          - provider: setup-kubectl
+            alias: setup-kubectl
+            provider_ref: acme/setup-kubectl
+            release_repo: kiox-setup-kubectl
+            main_package: ""
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,7 +57,7 @@ jobs:
         id: vars
         run: |
           owner=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')
-          echo "ref=ghcr.io/${owner}/kiox-echo-provider:ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+          echo "ref=ghcr.io/${owner}/${{ matrix.release_repo }}:ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
 
       - name: Login to GHCR
         uses: docker/login-action@v3
@@ -40,26 +66,79 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Package and push example provider
+      - name: Package and push provider
+        working-directory: testdata/${{ matrix.provider }}
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ./bin/kiox release \
-            --manifest testdata/echo-provider/kiox.yaml \
-            --main ./cmd/echo-provider \
-            --dist testdata/echo-provider/dist \
-            --output testdata/echo-provider/oci \
-            --push "${{ steps.vars.outputs.ref }}"
+          args=(release --dist dist --output oci --push "${{ steps.vars.outputs.ref }}")
+          if [ -n "${{ matrix.main_package }}" ]; then
+            args+=(--main "${{ matrix.main_package }}")
+          fi
+          ../../bin/kiox "${args[@]}"
+
+      - name: Install provider from GHCR
+        working-directory: testdata/${{ matrix.provider }}
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          home="$RUNNER_TEMP/kiox-home-${{ matrix.provider }}"
+          ../../bin/kiox --kiox-home "$home" install "${{ steps.vars.outputs.ref }}"
+          ../../bin/kiox --kiox-home "$home" provider list default | tee "$RUNNER_TEMP/${{ matrix.provider }}-install.out"
+          grep -q "${{ matrix.provider_ref }}" "$RUNNER_TEMP/${{ matrix.provider }}-install.out"
 
       - name: Create workspace and run from GHCR
+        working-directory: testdata/${{ matrix.provider }}
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cd testdata/echo-provider
-          workspace_root="$RUNNER_TEMP/kiox-workspace"
-          ../../bin/kiox --kiox-home "$RUNNER_TEMP/kiox-home" init "$workspace_root"
-          ../../bin/kiox --kiox-home "$RUNNER_TEMP/kiox-home" --workspace "$workspace_root" add "${{ steps.vars.outputs.ref }}" as echo
-          ../../bin/kiox --kiox-home "$RUNNER_TEMP/kiox-home" --workspace "$workspace_root" -- echo plan --intent "$PWD/intent.yaml" | tee "$RUNNER_TEMP/echo-run.out"
-          grep -q "capability=plan" "$RUNNER_TEMP/echo-run.out"
+          workspace_root="$RUNNER_TEMP/${{ matrix.provider }}-workspace"
+          home="$RUNNER_TEMP/kiox-home-${{ matrix.provider }}"
+          ../../bin/kiox --kiox-home "$home" init "$workspace_root"
+          ../../bin/kiox --kiox-home "$home" --workspace "$workspace_root" add "${{ steps.vars.outputs.ref }}" as "${{ matrix.alias }}"
+
+          case "${{ matrix.provider }}" in
+            echo-provider)
+              ../../bin/kiox --kiox-home "$home" --workspace "$workspace_root" -- echo plan --intent "$PWD/intent.yaml" | tee "$RUNNER_TEMP/echo-run.out"
+              grep -q 'capability=plan' "$RUNNER_TEMP/echo-run.out"
+              ;;
+            multi-tool-provider)
+              ../../bin/kiox --kiox-home "$home" --workspace "$workspace_root" -- echo one two | tee "$RUNNER_TEMP/multi-run.out"
+              ../../bin/kiox --kiox-home "$home" --workspace "$workspace_root" -- echo-tool alpha beta | tee "$RUNNER_TEMP/multi-tool-run.out"
+              grep -q 'normalized-env=hello-normalized' "$RUNNER_TEMP/multi-run.out"
+              grep -q 'normalized-args=one two' "$RUNNER_TEMP/multi-run.out"
+              grep -q 'normalized-args=alpha beta' "$RUNNER_TEMP/multi-tool-run.out"
+              ;;
+            inline-tool-provider)
+              ../../bin/kiox --kiox-home "$home" --workspace "$workspace_root" -- inline red blue | tee "$RUNNER_TEMP/inline-run.out"
+              ../../bin/kiox --kiox-home "$home" --workspace "$workspace_root" -- inline-tool green gold | tee "$RUNNER_TEMP/inline-tool-run.out"
+              grep -q 'inline-env=hello-inline' "$RUNNER_TEMP/inline-run.out"
+              grep -q 'inline-mode=inline' "$RUNNER_TEMP/inline-run.out"
+              grep -q 'inline-asset=hello-from-inline-assets' "$RUNNER_TEMP/inline-run.out"
+              grep -q 'inline-args=red blue' "$RUNNER_TEMP/inline-run.out"
+              grep -q 'inline-args=green gold' "$RUNNER_TEMP/inline-tool-run.out"
+              ;;
+            setup-kubectl)
+              server_root="$RUNNER_TEMP/kubectl-release"
+              mkdir -p "$server_root/v1.29.15/bin/linux/amd64"
+              printf 'v1.29.15\n' > "$server_root/stable.txt"
+              printf 'v1.29.15\n' > "$server_root/stable-1.29.txt"
+              cat <<'EOF' | sed 's/^              //' > "$server_root/v1.29.15/bin/linux/amd64/kubectl"
+              #!/bin/sh
+              set -eu
+              printf 'kubectl-version=%s\n' 'v1.29.15'
+              printf 'kubectl-args=%s\n' "$*"
+              EOF
+              chmod +x "$server_root/v1.29.15/bin/linux/amd64/kubectl"
+              python3 -m http.server 18080 --bind 127.0.0.1 --directory "$server_root" >/tmp/kubectl-server.log 2>&1 &
+              server_pid=$!
+              trap 'kill "$server_pid"' EXIT
+              KUBECTL_RELEASE_BASE_URL="http://127.0.0.1:18080" KUBECTL_VERSION="1.29" \
+                ../../bin/kiox --kiox-home "$home" --workspace "$workspace_root" -- kubectl version --client | tee "$RUNNER_TEMP/kubectl-run.out"
+              grep -q 'kubectl-version=v1.29.15' "$RUNNER_TEMP/kubectl-run.out"
+              grep -q 'kubectl-args=version --client' "$RUNNER_TEMP/kubectl-run.out"
+              ;;
+          esac

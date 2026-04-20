@@ -16,7 +16,7 @@ Run these commands from the repository root:
 
 ```bash
 ./bin/kiox release \
-	--manifest testdata/setup-kubectl/kiox.yaml \
+	--manifest testdata/setup-kubectl/provider.yaml \
 	--dist testdata/setup-kubectl/dist \
 	--output testdata/setup-kubectl/oci
 ```

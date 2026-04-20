@@ -23,7 +23,7 @@ func TestReleaseAndInstallLocalLayout(t *testing.T) {
 	releaseBuf := runRootCommand(t, []string{
 		"--kiox-home", home,
 		"release",
-		"--manifest", filepath.Join(providerDir, "kiox.yaml"),
+		"--manifest", providerManifestPath(providerDir),
 		"--dist", filepath.Join(providerDir, "dist"),
 		"--output", filepath.Join(providerDir, "oci"),
 	})
@@ -46,7 +46,7 @@ func TestReleaseAndInstallLocalLayout(t *testing.T) {
 	for _, expected := range []string{
 		filepath.Join(home, "providers", "sourceplane", "echo-provider", "v0.1.0", "metadata.json"),
 		filepath.Join(meta.StorePath, "oci", "index.json"),
-		filepath.Join(meta.StorePath, "kiox.yaml"),
+		filepath.Join(meta.StorePath, preferredProviderManifestName),
 	} {
 		if _, err := os.Stat(expected); err != nil {
 			t.Fatalf("expected installed artifact %s: %v", expected, err)
@@ -81,7 +81,7 @@ cp dist/bin/darwin/amd64/echo-provider dist/bin/linux/arm64/echo-provider
 	releaseBuf := runRootCommand(t, []string{
 		"--kiox-home", home,
 		"release",
-		"--manifest", filepath.Join(providerDir, "kiox.yaml"),
+		"--manifest", providerManifestPath(providerDir),
 		"--dist", filepath.Join(providerDir, "artifacts"),
 		"--output", filepath.Join(providerDir, "oci"),
 		"--delegate-goreleaser",
@@ -147,7 +147,7 @@ cp dist/bin/darwin/amd64/echo-provider dist/bin/linux/arm64/echo-provider
 	releaseBuf := runRootCommand(t, []string{
 		"--kiox-home", home,
 		"release",
-		"--manifest", filepath.Join(providerDir, "kiox.yaml"),
+		"--manifest", providerManifestPath(providerDir),
 		"--dist", filepath.Join(providerDir, "artifacts"),
 		"--output", filepath.Join(providerDir, "oci"),
 		"--delegate-goreleaser",
@@ -179,7 +179,7 @@ func TestReleasePushAndInstallFromRegistry(t *testing.T) {
 	releaseBuf := runRootCommand(t, []string{
 		"--kiox-home", home,
 		"release",
-		"--manifest", filepath.Join(providerDir, "kiox.yaml"),
+		"--manifest", providerManifestPath(providerDir),
 		"--dist", filepath.Join(providerDir, "dist"),
 		"--output", filepath.Join(providerDir, "oci"),
 		"--push", ref,
@@ -222,7 +222,7 @@ func TestInstallUsesCachedRemoteProvider(t *testing.T) {
 	releaseBuf := runRootCommand(t, []string{
 		"--kiox-home", home,
 		"release",
-		"--manifest", filepath.Join(providerDir, "kiox.yaml"),
+		"--manifest", providerManifestPath(providerDir),
 		"--dist", filepath.Join(providerDir, "dist"),
 		"--output", filepath.Join(providerDir, "oci"),
 		"--push", ref,

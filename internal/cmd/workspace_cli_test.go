@@ -521,7 +521,7 @@ func TestDashShortcutReusesCachedTaggedRegistryProvider(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load workspace provider metadata: %v", err)
 	}
-	for _, path := range []string{filepath.Join(meta.StorePath, "package.json"), filepath.Join(meta.StorePath, "kiox.yaml")} {
+	for _, path := range []string{filepath.Join(meta.StorePath, "package.json"), filepath.Join(meta.StorePath, preferredProviderManifestName)} {
 		if err := os.Remove(path); err != nil {
 			t.Fatalf("remove cached package file %s: %v", path, err)
 		}
@@ -1245,7 +1245,7 @@ func createCapabilityProviderProject(t *testing.T, dir, namespace, name, capabil
 		"      description: test capability",
 		"",
 	}, "\n")
-	if err := os.WriteFile(filepath.Join(dir, "kiox.yaml"), []byte(manifest), 0o644); err != nil {
+	if err := os.WriteFile(providerManifestPath(dir), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "cmd", name, "main.go"), []byte(mainSource), 0o644); err != nil {
@@ -1254,13 +1254,17 @@ func createCapabilityProviderProject(t *testing.T, dir, namespace, name, capabil
 	return dir
 }
 
+func providerManifestPath(providerDir string) string {
+	return filepath.Join(providerDir, preferredProviderManifestName)
+}
+
 func releaseProviderLayout(t *testing.T, home, providerDir string) string {
 	t.Helper()
 	layoutPath := filepath.Join(providerDir, "oci")
 	buf := runRootCommand(t, []string{
 		"--kiox-home", home,
 		"release",
-		"--manifest", filepath.Join(providerDir, "kiox.yaml"),
+		"--manifest", providerManifestPath(providerDir),
 		"--dist", filepath.Join(providerDir, "dist"),
 		"--output", layoutPath,
 	})
@@ -1272,7 +1276,7 @@ func releaseProviderLayout(t *testing.T, home, providerDir string) string {
 
 func setProviderVersion(t *testing.T, providerDir, version string) {
 	t.Helper()
-	manifestPath := filepath.Join(providerDir, "kiox.yaml")
+	manifestPath := providerManifestPath(providerDir)
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
 		t.Fatal(err)
@@ -1291,7 +1295,7 @@ func releaseProviderRef(t *testing.T, home, providerDir, ref string) {
 	buf := runRootCommand(t, []string{
 		"--kiox-home", home,
 		"release",
-		"--manifest", filepath.Join(providerDir, "kiox.yaml"),
+		"--manifest", providerManifestPath(providerDir),
 		"--dist", filepath.Join(providerDir, "dist"),
 		"--output", filepath.Join(providerDir, "oci"),
 		"--push", ref,

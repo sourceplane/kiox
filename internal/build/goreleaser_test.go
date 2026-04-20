@@ -25,7 +25,7 @@ func TestResolveGoReleaserConfigPrefersExplicitPath(t *testing.T) {
 
 func TestResolveGoReleaserConfigGeneratesFromManifest(t *testing.T) {
 	moduleRoot := t.TempDir()
-	manifestPath := filepath.Join(moduleRoot, "kiox.yaml")
+	manifestPath := filepath.Join(moduleRoot, "provider.yaml")
 	content := `apiVersion: kiox.io/v1
 kind: Provider
 metadata:

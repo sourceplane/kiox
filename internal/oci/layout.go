@@ -26,7 +26,11 @@ import (
 	"github.com/sourceplane/kiox/internal/ui/progress"
 )
 
-const layoutVersion = "1.0.0"
+const (
+	layoutVersion                  = "1.0.0"
+	providerManifestFileName       = "provider.yaml"
+	legacyProviderManifestFileName = "kiox.yaml"
+)
 
 type imageIndex struct {
 	SchemaVersion int                  `json:"schemaVersion"`
@@ -89,7 +93,11 @@ func Pack(opts PackOptions) (PackResult, error) {
 	if err != nil {
 		return PackResult{}, err
 	}
-	providerManifestDesc, err := writeBlob(opts.OutputDir, manifestBytes, MediaTypeManifest, map[string]string{"org.opencontainers.image.title": "kiox.yaml"})
+	manifestTitle := filepath.Base(opts.ManifestPath)
+	if strings.TrimSpace(manifestTitle) == "" {
+		manifestTitle = providerManifestFileName
+	}
+	providerManifestDesc, err := writeBlob(opts.OutputDir, manifestBytes, MediaTypeManifest, map[string]string{"org.opencontainers.image.title": manifestTitle})
 	if err != nil {
 		return PackResult{}, err
 	}
@@ -198,7 +206,7 @@ func installMetadata(layoutPath, tag, activationHome, storeHome, alias, ref stri
 		return state.ProviderMetadata{}, fmt.Errorf("cache OCI layout: %w", err)
 	}
 	tracker.Info("cache", "cached OCI blobs")
-	if err := os.WriteFile(filepath.Join(storeRoot, "kiox.yaml"), manifestBytes, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(storeRoot, providerManifestFileName), manifestBytes, 0o644); err != nil {
 		return state.ProviderMetadata{}, fmt.Errorf("cache manifest: %w", err)
 	}
 	if err := os.WriteFile(filepath.Join(storeRoot, "package.json"), metadataBytes, 0o644); err != nil {
@@ -802,9 +810,9 @@ func LoadPackageModel(meta state.ProviderMetadata) (core.Package, error) {
 			return layoutPkg, nil
 		}
 	}
-	manifestBytes, err := os.ReadFile(filepath.Join(storeRoot, "kiox.yaml"))
+	manifestBytes, err := readCachedProviderManifest(storeRoot)
 	if err != nil {
-		return pkg, fmt.Errorf("read cached provider manifest: %w", err)
+		return pkg, err
 	}
 	pkg, err = parser.LoadBytes(manifestBytes)
 	if err != nil {
@@ -837,8 +845,22 @@ func backfillCachedPackageFiles(meta state.ProviderMetadata, storeRoot string, m
 		writeMissingCacheFile(filepath.Join(storeRoot, "package.json"), metadataBytes)
 	}
 	if len(manifestBytes) > 0 {
-		writeMissingCacheFile(filepath.Join(storeRoot, "kiox.yaml"), manifestBytes)
+		writeMissingCacheFile(filepath.Join(storeRoot, providerManifestFileName), manifestBytes)
 	}
+}
+
+func readCachedProviderManifest(storeRoot string) ([]byte, error) {
+	for _, name := range []string{providerManifestFileName, legacyProviderManifestFileName} {
+		path := filepath.Join(storeRoot, name)
+		data, err := os.ReadFile(path)
+		if err == nil {
+			return data, nil
+		}
+		if !os.IsNotExist(err) {
+			return nil, fmt.Errorf("read cached provider manifest: %w", err)
+		}
+	}
+	return nil, fmt.Errorf("read cached provider manifest: %w", os.ErrNotExist)
 }
 
 func writeMissingCacheFile(path string, data []byte) {
