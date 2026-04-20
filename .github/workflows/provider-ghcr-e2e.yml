@@ -126,12 +126,12 @@ jobs:
               mkdir -p "$server_root/v1.29.15/bin/linux/amd64"
               printf 'v1.29.15\n' > "$server_root/stable.txt"
               printf 'v1.29.15\n' > "$server_root/stable-1.29.txt"
-              cat <<'EOF' | sed 's/^              //' > "$server_root/v1.29.15/bin/linux/amd64/kubectl"
-              #!/bin/sh
-              set -eu
-              printf 'kubectl-version=%s\n' 'v1.29.15'
-              printf 'kubectl-args=%s\n' "$*"
-              EOF
+              printf '%s\n' \
+                '#!/bin/sh' \
+                'set -eu' \
+                "printf 'kubectl-version=%s\\n' 'v1.29.15'" \
+                "printf 'kubectl-args=%s\\n' \"\$*\"" \
+                > "$server_root/v1.29.15/bin/linux/amd64/kubectl"
               chmod +x "$server_root/v1.29.15/bin/linux/amd64/kubectl"
               python3 -m http.server 18080 --bind 127.0.0.1 --directory "$server_root" >/tmp/kubectl-server.log 2>&1 &
               server_pid=$!
