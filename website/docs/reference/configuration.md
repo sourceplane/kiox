@@ -2,21 +2,21 @@
 title: Configuration
 ---
 
-tinx configuration is split across desired workspace state, provider package manifests, generated lock files, and tinx home state.
+kiox configuration is split across desired workspace state, provider package manifests, generated lock files, and kiox home state.
 
 ## Desired vs actual state
 
 | File | Owner | Purpose |
 | --- | --- | --- |
-| `tinx.yaml` | User | Desired workspace name and provider declarations |
-| `tinx.lock` | tinx | Resolved provider versions, digests, and store bindings |
+| `kiox.yaml` | User | Desired workspace name and provider declarations |
+| `kiox.lock` | kiox | Resolved provider versions, digests, and store bindings |
 
 ## Workspace manifest
 
-Workspace manifests live in the workspace root and are normally saved as `tinx.yaml`.
+Workspace manifests live in the workspace root and are normally saved as `kiox.yaml`.
 
 ```yaml
-apiVersion: tinx.io/v1
+apiVersion: kiox.io/v1
 kind: Workspace
 metadata:
   name: dev
@@ -32,16 +32,16 @@ providers:
 
 | Field | Meaning |
 | --- | --- |
-| `apiVersion` | Must be `tinx.io/v1` |
+| `apiVersion` | Must be `kiox.io/v1` |
 | `kind` | Must be `Workspace` |
 | `metadata.name` | Workspace name used by the CLI and lock file |
 | `providers` | Alias to provider source mapping |
 | `providers.<alias>.source` | OCI registry reference or local OCI layout path |
 | `providers.<alias>.plainHTTP` | Allow plain HTTP registry access for that provider |
 
-`tinx init` creates this file if it does not exist and initializes from it if it already exists. `tinx add` and `tinx remove` only rewrite `tinx.yaml` after provider reconciliation succeeds.
+`kiox init` creates this file if it does not exist and initializes from it if it already exists. `kiox add` and `kiox remove` only rewrite `kiox.yaml` after provider reconciliation succeeds.
 
-Manual edits are expected. Run `tinx sync` after editing `tinx.yaml`, or let `tinx status`, `tinx exec`, `tinx shell`, or `tinx -- ...` reconcile automatically on the next workspace command.
+Manual edits are expected. Run `kiox sync` after editing `kiox.yaml`, or let `kiox status`, `kiox exec`, `kiox shell`, or `kiox -- ...` reconcile automatically on the next workspace command.
 
 A provider entry may be a string shorthand:
 
@@ -52,12 +52,12 @@ providers:
 
 ## Provider package manifest
 
-Provider package manifests are authored as `provider.yaml`. Legacy `tinx.yaml` provider manifests are still supported for backward compatibility. Workspace manifests stay in `tinx.yaml`.
+Provider package manifests are authored as `provider.yaml`. Legacy `kiox.yaml` provider manifests are still supported for backward compatibility. Workspace manifests stay in `kiox.yaml`.
 
 The current built-in runtime actively uses `Tool`, `Bundle`, `Asset`, and `Environment` resources. Some additional fields are parsed into package metadata for future expansion; those are called out explicitly below.
 
 ```yaml
-apiVersion: tinx.io/v1
+apiVersion: kiox.io/v1
 kind: Provider
 metadata:
   namespace: acme
@@ -85,12 +85,12 @@ spec:
         - platform:
             os: darwin
             arch: arm64
-          mediaType: application/vnd.tinx.tool.binary
+          mediaType: application/vnd.kiox.tool.binary
           source: bin/darwin/arm64/node
         - platform:
             os: linux
             arch: amd64
-          mediaType: application/vnd.tinx.tool.binary
+          mediaType: application/vnd.kiox.tool.binary
           source: bin/linux/amd64/node
     - name: node-assets
       type: asset
@@ -177,7 +177,7 @@ The current built-in runtime and source combinations are:
 
 ## Managed-install pattern
 
-Setup-style providers model the user-facing command as a normal tool and let tinx install it through another tool:
+Setup-style providers model the user-facing command as a normal tool and let kiox install it through another tool:
 
 ```yaml
 tools:
@@ -216,10 +216,10 @@ That multi-document form is useful when a provider has many tools or when you wa
 
 ## Legacy compatibility manifest
 
-tinx still accepts the legacy single-tool shorthand:
+kiox still accepts the legacy single-tool shorthand:
 
 ```yaml
-apiVersion: tinx.io/v1
+apiVersion: kiox.io/v1
 kind: Provider
 metadata:
   namespace: acme
@@ -241,14 +241,14 @@ spec:
       root: assets
 ```
 
-Internally, tinx normalizes that into a default `Tool`, a `Bundle`, an `Environment`, and an `Asset` mount when assets are declared.
+Internally, kiox normalizes that into a default `Tool`, a `Bundle`, an `Environment`, and an `Asset` mount when assets are declared.
 
 ## Lock file
 
-Each workspace sync writes `tinx.lock`:
+Each workspace sync writes `kiox.lock`:
 
 ```yaml
-apiVersion: tinx.io/v1
+apiVersion: kiox.io/v1
 kind: WorkspaceLock
 metadata:
   name: dev
@@ -261,11 +261,11 @@ providers:
     store: 4f3f...
 ```
 
-Use the lock file as generated state. tinx rewrites it during sync and it should not be edited by hand.
+Use the lock file as generated state. kiox rewrites it during sync and it should not be edited by hand.
 
-## Global tinx home config
+## Global kiox home config
 
-tinx stores shared state in `$TINX_HOME/config.yaml`:
+kiox stores shared state in `$KIOX_HOME/config.yaml`:
 
 ```yaml
 aliases:

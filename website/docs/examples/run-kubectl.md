@@ -15,8 +15,8 @@ This example uses the repository fixture in `testdata/setup-kubectl`, which mode
 Run these commands from the repository root:
 
 ```bash
-./bin/tinx release \
-	--manifest testdata/setup-kubectl/tinx.yaml \
+./bin/kiox release \
+	--manifest testdata/setup-kubectl/kiox.yaml \
 	--dist testdata/setup-kubectl/dist \
 	--output testdata/setup-kubectl/oci
 ```
@@ -24,7 +24,7 @@ Run these commands from the repository root:
 ## Create a workspace
 
 ```bash
-./bin/tinx init cluster-admin -p testdata/setup-kubectl/oci as kubectl
+./bin/kiox init cluster-admin -p testdata/setup-kubectl/oci as kubectl
 ```
 
 ## Inspect the lazy state
@@ -32,26 +32,26 @@ Run these commands from the repository root:
 Before the first command runs, the provider is installed but the `kubectl` binary is still lazy:
 
 ```bash
-./bin/tinx --workspace cluster-admin ls
-./bin/tinx --workspace cluster-admin status
+./bin/kiox --workspace cluster-admin ls
+./bin/kiox --workspace cluster-admin status
 ```
 
-## Run kubectl through tinx
+## Run kubectl through kiox
 
 ```bash
-KUBECTL_VERSION=1.29 ./bin/tinx --workspace cluster-admin -- kubectl version --client
-./bin/tinx --workspace cluster-admin -- kubectl get pods -A
+KUBECTL_VERSION=1.29 ./bin/kiox --workspace cluster-admin -- kubectl version --client
+./bin/kiox --workspace cluster-admin -- kubectl get pods -A
 ```
 
 The first command runs the `setup-kubectl` installer tool through the shim manager and writes the requested `kubectl` binary into the provider store.
 
 ## Mix host credentials with the workspace tool
 
-tinx does not replace your kubeconfig flow. Keep using the normal Kubernetes environment variables and config files:
+kiox does not replace your kubeconfig flow. Keep using the normal Kubernetes environment variables and config files:
 
 ```bash
 export KUBECONFIG=$HOME/.kube/config
-./bin/tinx --workspace cluster-admin -- kubectl config current-context
+./bin/kiox --workspace cluster-admin -- kubectl config current-context
 ```
 
 ## Inspect the ready state
@@ -59,8 +59,8 @@ export KUBECONFIG=$HOME/.kube/config
 After the first successful run, the tool inventory changes from lazy to ready:
 
 ```bash
-./bin/tinx --workspace cluster-admin ls
-./bin/tinx --workspace cluster-admin status
+./bin/kiox --workspace cluster-admin ls
+./bin/kiox --workspace cluster-admin status
 ```
 
 Use this approach when you want a team-wide kubectl version without asking every workstation to manage the same binary separately.

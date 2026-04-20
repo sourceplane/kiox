@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/sourceplane/tinx/internal/state"
-	"github.com/sourceplane/tinx/internal/workspace"
+	"github.com/sourceplane/kiox/internal/state"
+	"github.com/sourceplane/kiox/internal/workspace"
 )
 
 func newWorkspaceCommand(root *rootOptions) *cobra.Command {
@@ -102,7 +102,7 @@ func newWorkspaceActivateCommand(root *rootOptions) *cobra.Command {
 		Use:        "activate <workspace> [-- command...]",
 		Short:      "Deprecated: use a workspace",
 		Hidden:     true,
-		Deprecated: "use 'tinx workspace use <workspace>' instead",
+		Deprecated: "use 'kiox workspace use <workspace>' instead",
 		Args:       cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			beforeDash, afterDash := splitArgsAtDash(cmd, args)

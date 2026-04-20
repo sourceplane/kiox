@@ -2,7 +2,7 @@
 title: Contributing provider examples
 ---
 
-This page is for contributors who are adding provider examples, fixtures, or provider-focused documentation to the tinx repository itself.
+This page is for contributors who are adding provider examples, fixtures, or provider-focused documentation to the kiox repository itself.
 
 ## Use the fixture matrix
 
@@ -24,7 +24,7 @@ When you add provider docs:
 - show the manifest or the relevant resource snippet
 - show the packaging command
 - show the workspace command that runs the provider
-- show `tinx ls` or `tinx status` when lazy tool behavior matters
+- show `kiox ls` or `kiox status` when lazy tool behavior matters
 - avoid abstract descriptions without a CLI example
 
 ## Update reference pages with behavior changes

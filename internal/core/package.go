@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	APIVersionV1    = "tinx.io/v1"
+	APIVersionV1    = "kiox.io/v1"
 	KindProvider    = "Provider"
 	KindTool        = "Tool"
 	KindBundle      = "Bundle"
@@ -317,8 +317,8 @@ func (pkg Package) Validate() error {
 			if trimmed == "" {
 				return fmt.Errorf("environment %s: variable keys must not be empty", name)
 			}
-			if strings.HasPrefix(strings.ToUpper(trimmed), "TINX_") {
-				return fmt.Errorf("environment %s: variable %q must not use reserved TINX_ prefix", name, trimmed)
+			if strings.HasPrefix(strings.ToUpper(trimmed), "KIOX_") {
+				return fmt.Errorf("environment %s: variable %q must not use reserved KIOX_ prefix", name, trimmed)
 			}
 		}
 	}

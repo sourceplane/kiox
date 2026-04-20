@@ -1,8 +1,8 @@
 GO ?= go
 BIN_DIR ?= bin
-TINX_BIN ?= $(BIN_DIR)/tinx
+KIOX_BIN ?= $(BIN_DIR)/kiox
 
-TINX_HOME ?= $(CURDIR)/.tinx-home
+KIOX_HOME ?= $(CURDIR)/.kiox-home
 
 ECHO_PROVIDER_DIR ?= testdata/echo-provider
 ECHO_PROVIDER_REF ?= sourceplane/echo-provider
@@ -11,7 +11,7 @@ ECHO_PROVIDER_DIST ?= $(ECHO_PROVIDER_DIR)/dist
 ECHO_PROVIDER_OCI ?= $(ECHO_PROVIDER_DIR)/oci
 
 GHCR_OWNER ?= $(shell echo "$${GITHUB_REPOSITORY_OWNER:-$${USER}}" | tr '[:upper:]' '[:lower:]')
-GHCR_REPO ?= ghcr.io/$(GHCR_OWNER)/tinx-echo-provider
+GHCR_REPO ?= ghcr.io/$(GHCR_OWNER)/kiox-echo-provider
 GHCR_TAG ?= dev
 GHCR_REF ?= $(GHCR_REPO):$(GHCR_TAG)
 
@@ -20,9 +20,9 @@ GHCR_REF ?= $(GHCR_REPO):$(GHCR_TAG)
 help:
 	@echo "Targets:"
 	@echo "  make tidy              - Run go mod tidy"
-	@echo "  make build             - Build tinx CLI to $(TINX_BIN)"
+	@echo "  make build             - Build kiox CLI to $(KIOX_BIN)"
 	@echo "  make test              - Run go test ./..."
-	@echo "  make test-core         - Run tinx command + OCI tests only"
+	@echo "  make test-core         - Run kiox command + OCI tests only"
 	@echo "  make release-example   - Package test echo provider into OCI layout"
 	@echo "  make install-example   - Install test echo provider from local OCI layout"
 	@echo "  make run-example       - Run installed echo provider capability"
@@ -36,7 +36,7 @@ tidy:
 
 build:
 	mkdir -p $(BIN_DIR)
-	$(GO) build -o $(TINX_BIN) ./cmd/tinx
+	$(GO) build -o $(KIOX_BIN) ./cmd/kiox
 
 test:
 	$(GO) test ./...
@@ -45,34 +45,34 @@ test-core:
 	$(GO) test ./internal/cmd ./internal/manifest ./internal/oci
 
 release-example: build
-	./$(TINX_BIN) release \
-		--manifest $(ECHO_PROVIDER_DIR)/tinx.yaml \
+	./$(KIOX_BIN) release \
+		--manifest $(ECHO_PROVIDER_DIR)/kiox.yaml \
 		--main ./cmd/echo-provider \
 		--dist $(ECHO_PROVIDER_DIST) \
 		--output $(ECHO_PROVIDER_OCI)
 
 install-example: release-example
-	./$(TINX_BIN) --tinx-home $(TINX_HOME) install $(ECHO_PROVIDER_ALIAS) $(ECHO_PROVIDER_REF) --source $(ECHO_PROVIDER_OCI)
+	./$(KIOX_BIN) --kiox-home $(KIOX_HOME) install $(ECHO_PROVIDER_ALIAS) $(ECHO_PROVIDER_REF) --source $(ECHO_PROVIDER_OCI)
 
 run-example: install-example
-	cd $(ECHO_PROVIDER_DIR) && ../../$(TINX_BIN) --tinx-home $(TINX_HOME) run $(ECHO_PROVIDER_ALIAS) plan --intent intent.yaml
+	cd $(ECHO_PROVIDER_DIR) && ../../$(KIOX_BIN) --kiox-home $(KIOX_HOME) run $(ECHO_PROVIDER_ALIAS) plan --intent intent.yaml
 
 e2e-local: run-example
 
 ghcr-push: build
-	./$(TINX_BIN) release \
-		--manifest $(ECHO_PROVIDER_DIR)/tinx.yaml \
+	./$(KIOX_BIN) release \
+		--manifest $(ECHO_PROVIDER_DIR)/kiox.yaml \
 		--main ./cmd/echo-provider \
 		--dist $(ECHO_PROVIDER_DIST) \
 		--output $(ECHO_PROVIDER_OCI) \
 		--push $(GHCR_REF)
 
 ghcr-install-run: build
-	./$(TINX_BIN) --tinx-home $(TINX_HOME) install $(ECHO_PROVIDER_ALIAS) $(GHCR_REF)
-	cd $(ECHO_PROVIDER_DIR) && ../../$(TINX_BIN) --tinx-home $(TINX_HOME) run $(ECHO_PROVIDER_ALIAS) plan --intent intent.yaml
+	./$(KIOX_BIN) --kiox-home $(KIOX_HOME) install $(ECHO_PROVIDER_ALIAS) $(GHCR_REF)
+	cd $(ECHO_PROVIDER_DIR) && ../../$(KIOX_BIN) --kiox-home $(KIOX_HOME) run $(ECHO_PROVIDER_ALIAS) plan --intent intent.yaml
 
 clean:
 	rm -rf $(BIN_DIR)
-	rm -rf $(TINX_HOME)
+	rm -rf $(KIOX_HOME)
 	rm -rf $(ECHO_PROVIDER_DIST)
 	rm -rf $(ECHO_PROVIDER_OCI)

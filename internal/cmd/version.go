@@ -3,15 +3,15 @@ package cmd
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/sourceplane/tinx/pkg/version"
+	"github.com/sourceplane/kiox/pkg/version"
 )
 
 func newVersionCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
-		Short: "Print the tinx version",
+		Short: "Print the kiox version",
 		Run: func(cmd *cobra.Command, _ []string) {
-			writeLine(cmd.OutOrStdout(), "tinx %s", version.String())
+			writeLine(cmd.OutOrStdout(), "kiox %s", version.String())
 		},
 	}
 }

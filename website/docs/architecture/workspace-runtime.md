@@ -2,7 +2,7 @@
 title: Workspace runtime
 ---
 
-The workspace runtime is the project-local layer tinx builds under `.workspace/`.
+The workspace runtime is the project-local layer kiox builds under `.workspace/`.
 
 ## Workspace resolution
 
@@ -10,15 +10,15 @@ The command layer resolves a workspace target from:
 
 1. `--workspace`
 2. upward discovery from the current directory
-3. the active workspace stored in tinx home
+3. the active workspace stored in kiox home
 
-If a registered workspace root no longer exists, tinx marks it as missing and asks you to delete the stale entry.
+If a registered workspace root no longer exists, kiox marks it as missing and asks you to delete the stale entry.
 
 ## Sync phase
 
-During sync, tinx:
+During sync, kiox:
 
-1. loads the current `tinx.lock`
+1. loads the current `kiox.lock`
 2. resolves each provider source to a local OCI layout or registry reference
 3. decides whether to reuse the locked source or refresh it
 4. activates matching provider metadata from the shared global store when available, otherwise installs or refreshes provider metadata
@@ -29,7 +29,7 @@ During sync, tinx:
 
 ## Shell build phase
 
-After sync, tinx builds workspace runtime artifacts:
+After sync, kiox builds workspace runtime artifacts:
 
 ```text
 .workspace/
@@ -46,12 +46,12 @@ Key behaviors:
 - aliases are sorted before shell artifacts are written
 - provider environment variables must agree when they share a key
 - shims are written for both workspace aliases and tool `provides` entries
-- generated shims still call the hidden `tinx __shim` command, not the real tool binary directly
-- `tinx -- <command>` and `tinx exec <command>` can dispatch directly to a prepared workspace target instead of shelling back through a shim
+- generated shims still call the hidden `kiox __shim` command, not the real tool binary directly
+- `kiox -- <command>` and `kiox exec <command>` can dispatch directly to a prepared workspace target instead of shelling back through a shim
 
-The shims are what make lazy installation work for shells and exported workspace `PATH`s. Direct dispatch is an optimization for tinx CLI entrypoints, not a separate execution model.
+The shims are what make lazy installation work for shells and exported workspace `PATH`s. Direct dispatch is an optimization for kiox CLI entrypoints, not a separate execution model.
 
-Workspace-facing commands keep sync output concise. tinx reports provider-level cache or install results rather than every internal registry and blob step during a normal workspace sync.
+Workspace-facing commands keep sync output concise. kiox reports provider-level cache or install results rather than every internal registry and blob step during a normal workspace sync.
 
 ## PATH layout
 
@@ -63,11 +63,11 @@ The generated `PATH` is assembled in this order:
 
 That ensures a provider alias wins over host binaries with the same name.
 
-When tinx resolves a command through either a shim or direct dispatch, it can still add tool-specific binary directories for that single process.
+When kiox resolves a command through either a shim or direct dispatch, it can still add tool-specific binary directories for that single process.
 
 ## Working directory behavior
 
-If you launch tinx from inside the workspace tree, tinx preserves your current directory. If you launch it from outside, tinx executes from the workspace root.
+If you launch kiox from inside the workspace tree, kiox preserves your current directory. If you launch it from outside, kiox executes from the workspace root.
 
 ## Shell files
 
@@ -80,10 +80,10 @@ These files are generated output. Treat them as runtime state, not source of tru
 
 The workspace environment contains:
 
-- workspace-scoped variables such as `TINX_WORKSPACE_ROOT`
+- workspace-scoped variables such as `KIOX_WORKSPACE_ROOT`
 - provider-derived variables for each alias
 - merged static path entries
 
-If two providers export the same variable with different values, tinx fails rather than picking one silently.
+If two providers export the same variable with different values, kiox fails rather than picking one silently.
 
-Tool-scoped environment resources are merged when tinx resolves the selected tool plan.
+Tool-scoped environment resources are merged when kiox resolves the selected tool plan.

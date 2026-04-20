@@ -1,8 +1,8 @@
 ---
-title: tinx provider
+title: kiox provider
 ---
 
-`tinx provider` manages providers declared in a workspace. The shorter `tinx add`, `tinx remove`, and `tinx update` commands map to the same workflows.
+`kiox provider` manages providers declared in a workspace. The shorter `kiox add`, `kiox remove`, and `kiox update` commands map to the same workflows.
 
 ## Main command help
 
@@ -10,7 +10,7 @@ title: tinx provider
 Manage workspace providers and provider inventory
 
 Usage:
-  tinx provider [command]
+  kiox provider [command]
 
 Aliases:
   provider, providers, p
@@ -25,91 +25,91 @@ Flags:
   -h, --help   help for provider
 
 Global Flags:
-      --tinx-home string   override the tinx home directory
+      --kiox-home string   override the kiox home directory
   -w, --workspace string   select the workspace for workspace-shell commands
 
-Use "tinx provider [command] --help" for more information about a command.
+Use "kiox provider [command] --help" for more information about a command.
 ```
 
 ## `provider add`
 
-Add a provider source to the workspace manifest and sync it immediately. tinx resolves, installs, and validates the provider first; only successful adds rewrite `tinx.yaml`, update `tinx.lock`, and refresh the workspace shell artifacts.
+Add a provider source to the workspace manifest and sync it immediately. kiox resolves, installs, and validates the provider first; only successful adds rewrite `kiox.yaml`, update `kiox.lock`, and refresh the workspace shell artifacts.
 
 ```text
 Add a provider to the current or selected workspace
 
 Usage:
-  tinx provider add <provider> [as <alias>] [flags]
+  kiox provider add <provider> [as <alias>] [flags]
 
 Flags:
   -h, --help         help for add
       --plain-http   use plain HTTP for registry pulls in this workspace
 
 Global Flags:
-      --tinx-home string   override the tinx home directory
+      --kiox-home string   override the kiox home directory
   -w, --workspace string   select the workspace for workspace-shell commands
 ```
 
 Examples:
 
 ```bash
-tinx provider add core/node as node
-tinx add ghcr.io/acme/kubectl:v1.31.0 as kubectl
-tinx provider add ./oci as echo
+kiox provider add core/node as node
+kiox add ghcr.io/acme/kubectl:v1.31.0 as kubectl
+kiox provider add ./oci as echo
 ```
 
 ## `provider list`
 
 List providers for the current workspace, a named workspace, or the default scope.
 
-This is provider-only inventory. If you want tool inventory too, use `tinx ls` or `tinx status`.
+This is provider-only inventory. If you want tool inventory too, use `kiox ls` or `kiox status`.
 
 ```text
 List providers for the current, named, or default scope
 
 Usage:
-  tinx provider list [workspace|default] [flags]
+  kiox provider list [workspace|default] [flags]
 
 Flags:
   -h, --help   help for list
 
 Global Flags:
-      --tinx-home string   override the tinx home directory
+      --kiox-home string   override the kiox home directory
   -w, --workspace string   select the workspace for workspace-shell commands
 ```
 
 Examples:
 
 ```bash
-tinx provider list
-tinx provider list demo
-tinx provider list default
-tinx ls demo
+kiox provider list
+kiox provider list demo
+kiox provider list default
+kiox ls demo
 ```
 
 ## `provider remove`
 
-Remove a provider from the workspace manifest and refresh workspace state. Successful removal also clears the provider from `tinx.lock` and workspace runtime state.
+Remove a provider from the workspace manifest and refresh workspace state. Successful removal also clears the provider from `kiox.lock` and workspace runtime state.
 
 ```text
 Remove a provider from the current or selected workspace
 
 Usage:
-  tinx provider remove <provider-or-alias> [flags]
+  kiox provider remove <provider-or-alias> [flags]
 
 Flags:
   -h, --help   help for remove
 
 Global Flags:
-      --tinx-home string   override the tinx home directory
+      --kiox-home string   override the kiox home directory
   -w, --workspace string   select the workspace for workspace-shell commands
 ```
 
 Examples:
 
 ```bash
-tinx provider remove node
-tinx remove lite-ci
+kiox provider remove node
+kiox remove lite-ci
 ```
 
 ## `provider update`
@@ -120,25 +120,25 @@ Refresh provider metadata for all providers or only the named aliases.
 Refresh provider metadata for the current or selected workspace
 
 Usage:
-  tinx provider update [provider-or-alias...] [flags]
+  kiox provider update [provider-or-alias...] [flags]
 
 Flags:
   -h, --help   help for update
 
 Global Flags:
-      --tinx-home string   override the tinx home directory
+      --kiox-home string   override the kiox home directory
   -w, --workspace string   select the workspace for workspace-shell commands
 ```
 
 Examples:
 
 ```bash
-tinx provider update
-tinx provider update node lite-ci
-tinx update node
+kiox provider update
+kiox provider update node lite-ci
+kiox update node
 ```
 
-If you edit `tinx.yaml` by hand, run `tinx sync` to reconcile it explicitly. Normal workspace entry points such as `tinx status`, `tinx exec`, `tinx shell`, and `tinx -- ...` also reconcile automatically.
+If you edit `kiox.yaml` by hand, run `kiox sync` to reconcile it explicitly. Normal workspace entry points such as `kiox status`, `kiox exec`, `kiox shell`, and `kiox -- ...` also reconcile automatically.
 
 ## Related inventory commands
 
@@ -148,8 +148,8 @@ The top-level `list` command exposes both provider and tool inventory for worksp
 List providers and tools or inspect workspace inventory
 
 Usage:
-  tinx list [workspace|default] [flags]
-  tinx list [command]
+  kiox list [workspace|default] [flags]
+  kiox list [command]
 
 Aliases:
   list, ls

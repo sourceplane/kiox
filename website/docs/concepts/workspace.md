@@ -2,7 +2,7 @@
 title: Workspace
 ---
 
-A **workspace** is the execution boundary in tinx.
+A **workspace** is the execution boundary in kiox.
 
 It decides which provider packages are available, which versions are locked, and which shell artifacts should be written for the current project.
 
@@ -14,7 +14,7 @@ A workspace is responsible for:
 
 - declaring provider aliases and sources
 - resolving those sources to installed provider metadata
-- locking versions and digests in `tinx.lock`
+- locking versions and digests in `kiox.lock`
 - writing `.workspace/` shell artifacts
 - exposing provider aliases and tool commands on `PATH`
 
@@ -22,23 +22,23 @@ A workspace is responsible for:
 
 ```text
 <workspace>/
-  tinx.yaml      # desired state
-  tinx.lock      # resolved state
+  kiox.yaml      # desired state
+  kiox.lock      # resolved state
   .workspace/    # runtime state
 ```
 
 | File | Owner | Purpose |
 | --- | --- | --- |
-| `tinx.yaml` | User | Desired workspace name and provider sources |
-| `tinx.lock` | tinx | Resolved provider versions and digests |
-| `.workspace/` | tinx | Rebuildable shell/runtime artifacts |
+| `kiox.yaml` | User | Desired workspace name and provider sources |
+| `kiox.lock` | kiox | Resolved provider versions and digests |
+| `.workspace/` | kiox | Rebuildable shell/runtime artifacts |
 
-### `tinx.yaml`
+### `kiox.yaml`
 
 Declares which provider packages belong to the workspace:
 
 ```yaml
-apiVersion: tinx.io/v1
+apiVersion: kiox.io/v1
 kind: Workspace
 metadata:
   name: dev
@@ -50,7 +50,7 @@ providers:
     source: ghcr.io/acme/setup-kubectl:v1.29.0
 ```
 
-### `tinx.lock`
+### `kiox.lock`
 
 Records the resolved provider state, including pinned digests for tagged registry references. That keeps workspace execution reproducible and lets repeated runs reuse cached content.
 
@@ -62,7 +62,7 @@ Generated artifacts used during execution:
 - `env` with exported workspace environment variables
 - `path` with the static path additions used by the workspace shell
 
-This directory is rebuildable. tinx recreates it whenever the workspace is synced.
+This directory is rebuildable. kiox recreates it whenever the workspace is synced.
 
 ## Workspace lifecycle
 
@@ -70,19 +70,19 @@ This directory is rebuildable. tinx recreates it whenever the workspace is synce
 Edit Desired State → Reconcile → Lock → Build Shell Artifacts → Execute
 ```
 
-1. Declare provider aliases in `tinx.yaml` or add them with `tinx add`.
-2. Reconcile provider sources with `tinx init`, `tinx sync`, or any normal workspace execution entry point.
-3. Persist the resolved provider state in `tinx.lock`.
+1. Declare provider aliases in `kiox.yaml` or add them with `kiox add`.
+2. Reconcile provider sources with `kiox init`, `kiox sync`, or any normal workspace execution entry point.
+3. Persist the resolved provider state in `kiox.lock`.
 4. Build `.workspace/bin`, `.workspace/env`, and `.workspace/path`.
-5. Run commands through `tinx exec`, `tinx shell`, or `tinx -- ...`.
+5. Run commands through `kiox exec`, `kiox shell`, or `kiox -- ...`.
 
 The actual tool binaries may still be lazy at this point. The first command run through a shim performs the final tool installation steps if needed.
 
-`tinx add` follows the same model: tinx resolves, installs, and validates the provider first, then updates `tinx.yaml` and `tinx.lock` only after that succeeds.
+`kiox add` follows the same model: kiox resolves, installs, and validates the provider first, then updates `kiox.yaml` and `kiox.lock` only after that succeeds.
 
 ## Inventory and status
 
-The workspace surface is not only providers anymore. `tinx ls` and `tinx status` now show:
+The workspace surface is not only providers anymore. `kiox ls` and `kiox status` now show:
 
 - providers installed for the workspace
 - tool inventory for each ready provider
@@ -119,11 +119,11 @@ The workspace composes provider packages. The runtime resolves and executes thei
 ## Useful commands
 
 ```bash
-tinx init
-tinx add core/node as node
-tinx sync
-tinx ls
-tinx status
-tinx -- node --version
-tinx workspace list --ready
+kiox init
+kiox add core/node as node
+kiox sync
+kiox ls
+kiox status
+kiox -- node --version
+kiox workspace list --ready
 ```

@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/sourceplane/tinx/internal/oci"
+	"github.com/sourceplane/kiox/internal/oci"
 )
 
 func newPackCommand() *cobra.Command {
@@ -44,7 +44,7 @@ func newPackCommand() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&manifestPath, "manifest", preferredProviderManifestName, "path to provider.yaml (legacy tinx.yaml also supported)")
+	cmd.Flags().StringVar(&manifestPath, "manifest", preferredProviderManifestName, "path to provider.yaml (legacy kiox.yaml also supported)")
 	cmd.Flags().StringVar(&artifactRoot, "artifact-root", "", "root containing built binaries and assets")
 	cmd.Flags().StringVar(&outputDir, "output", "oci", "output OCI image layout directory")
 	cmd.Flags().StringVar(&tag, "tag", "", "tag to write into the OCI layout index")

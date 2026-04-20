@@ -1,10 +1,10 @@
-apiVersion: tinx.io/v1
+apiVersion: kiox.io/v1
 kind: Provider
 metadata:
   namespace: sourceplane
   name: echo-provider
   version: v0.1.0
-  description: Test provider for tinx packaging and installation
+  description: Test provider for kiox packaging and installation
 spec:
   runtime: binary
   entrypoint: echo-provider

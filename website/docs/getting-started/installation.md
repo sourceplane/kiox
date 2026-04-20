@@ -2,7 +2,7 @@
 title: Installation
 ---
 
-Install tinx with Go when you want a local CLI quickly, or use the release installer when you want a prebuilt binary.
+Install kiox with Go when you want a local CLI quickly, or use the release installer when you want a prebuilt binary.
 
 ## Prerequisites
 
@@ -13,29 +13,29 @@ Install tinx with Go when you want a local CLI quickly, or use the release insta
 ## Install with Go
 
 ```bash
-go install github.com/sourceplane/tinx/cmd/tinx@latest
+go install github.com/sourceplane/kiox/cmd/kiox@latest
 ```
 
 ## Install from GitHub Releases
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sourceplane/tinx/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/sourceplane/kiox/main/install.sh | bash
 ```
 
 ## Verify the CLI
 
 ```bash
-tinx version
-tinx --help
+kiox version
+kiox --help
 ```
 
-## Build tinx from this repository
+## Build kiox from this repository
 
-Use this path when you are working in the repository and want `./bin/tinx` for local examples:
+Use this path when you are working in the repository and want `./bin/kiox` for local examples:
 
 ```bash
 make build
-./bin/tinx version
+./bin/kiox version
 ```
 
 ## Build the docs site locally

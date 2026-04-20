@@ -1,8 +1,8 @@
-# tinx
+# kiox
 
 OCI-native provider package runtime, lazy workspace shell, and packager.
 
-`tinx` packages tools and toolchains as OCI artifacts, installs them into a shared cache, and exposes them through reproducible workspace shims. The current architecture normalizes both legacy single-binary manifests and newer provider packages that declare multiple tools, bundles, assets, and environments.
+`kiox` packages tools and toolchains as OCI artifacts, installs them into a shared cache, and exposes them through reproducible workspace shims. The current architecture normalizes both legacy single-binary manifests and newer provider packages that declare multiple tools, bundles, assets, and environments.
 
 The main abstractions are:
 
@@ -13,8 +13,8 @@ The main abstractions are:
 
 Workspace state follows a simple desired-vs-actual split:
 
-- `tinx.yaml`: user-owned desired workspace state
-- `tinx.lock`: tinx-owned resolved provider state
+- `kiox.yaml`: user-owned desired workspace state
+- `kiox.lock`: kiox-owned resolved provider state
 
 ## Documentation
 
@@ -32,40 +32,40 @@ cd website
 npm ci
 npm run docs:build
 wrangler login
-wrangler pages deploy docs-build --project-name tinx
+wrangler pages deploy docs-build --project-name kiox
 ```
 
-Replace `tinx` with your Cloudflare Pages project name if it is different.
+Replace `kiox` with your Cloudflare Pages project name if it is different.
 
 ## Install
 
 Install from source:
 
 ```bash
-go install github.com/sourceplane/tinx/cmd/tinx@latest
+go install github.com/sourceplane/kiox/cmd/kiox@latest
 ```
 
 Or install a release binary:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sourceplane/tinx/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/sourceplane/kiox/main/install.sh | bash
 ```
 
 Verify the CLI:
 
 ```bash
-tinx version
-tinx --help
+kiox version
+kiox --help
 ```
 
 ## Quick example
 
-Build tinx and package the normalized multi-tool fixture:
+Build kiox and package the normalized multi-tool fixture:
 
 ```bash
 make build
-./bin/tinx release \
-	--manifest testdata/multi-tool-provider/tinx.yaml \
+./bin/kiox release \
+	--manifest testdata/multi-tool-provider/kiox.yaml \
 	--dist testdata/multi-tool-provider/dist \
 	--output testdata/multi-tool-provider/oci
 ```
@@ -73,10 +73,10 @@ make build
 Create a workspace from the local OCI layout and run both the provider alias and the provided tool command:
 
 ```bash
-./bin/tinx init demo -p testdata/multi-tool-provider/oci as echo
-./bin/tinx --workspace demo status
-./bin/tinx --workspace demo exec echo one two
-./bin/tinx --workspace demo exec echo-tool alpha beta
+./bin/kiox init demo -p testdata/multi-tool-provider/oci as echo
+./bin/kiox --workspace demo status
+./bin/kiox --workspace demo exec echo one two
+./bin/kiox --workspace demo exec echo-tool alpha beta
 ```
 
 The first execution materializes the bundled `setup-echo` tool and lazy-installs the script-backed `echo-tool` into the provider store.
@@ -86,25 +86,25 @@ The first execution materializes the bundled `setup-echo` tool and lazy-installs
 Create and use a workspace:
 
 ```bash
-tinx init demo
-tinx add core/node as node
-tinx sync
-tinx use demo
+kiox init demo
+kiox add core/node as node
+kiox sync
+kiox use demo
 ```
 
 Add providers and run them through the workspace shell:
 
 ```bash
-tinx provider add core/node as node
-tinx provider add sourceplane/lite-ci as lite-ci
-tinx -- node build
-tinx -- lite-ci plan
+kiox provider add core/node as node
+kiox provider add sourceplane/lite-ci as lite-ci
+kiox -- node build
+kiox -- lite-ci plan
 ```
 
 Package and publish a provider:
 
 ```bash
-tinx release --manifest provider.yaml --main ./cmd/my-provider --push ghcr.io/acme/my-provider:v1.2.3
+kiox release --manifest provider.yaml --main ./cmd/my-provider --push ghcr.io/acme/my-provider:v1.2.3
 ```
 
 ## Development

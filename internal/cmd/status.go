@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/sourceplane/tinx/internal/workspace"
+	"github.com/sourceplane/kiox/internal/workspace"
 )
 
 func newStatusCommand(root *rootOptions) *cobra.Command {
@@ -79,7 +79,7 @@ func renderWorkspaceStatus(w io.Writer, target *workspaceTarget, home string, sh
 		writeLine(w, "%s | %d providers | shims %s", workspaceName, len(providers), shims)
 		return
 	}
-	writeLine(w, "tinx workspace: %s", workspaceName)
+	writeLine(w, "kiox workspace: %s", workspaceName)
 	writeLine(w, "path: %s", path)
 	writeLine(w, "shims: %s", shims)
 	writeLine(w, "")
@@ -113,7 +113,7 @@ func renderDefaultStatus(w io.Writer, scope inventoryScope, verbose, short bool)
 		writeLine(w, "none | %d providers | shims %s", len(scope.Providers), shims)
 		return
 	}
-	writeLine(w, "tinx workspace: none")
+	writeLine(w, "kiox workspace: none")
 	writeLine(w, "path: -")
 	writeLine(w, "shims: %s", shims)
 	writeLine(w, "")

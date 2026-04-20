@@ -9,12 +9,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/sourceplane/tinx/internal/core"
-	"github.com/sourceplane/tinx/internal/oci"
-	truntime "github.com/sourceplane/tinx/internal/runtime"
-	"github.com/sourceplane/tinx/internal/runtimes"
-	"github.com/sourceplane/tinx/internal/state"
-	"github.com/sourceplane/tinx/internal/workspace"
+	"github.com/sourceplane/kiox/internal/core"
+	"github.com/sourceplane/kiox/internal/oci"
+	truntime "github.com/sourceplane/kiox/internal/runtime"
+	"github.com/sourceplane/kiox/internal/runtimes"
+	"github.com/sourceplane/kiox/internal/state"
+	"github.com/sourceplane/kiox/internal/workspace"
 )
 
 func newShimCommand(root *rootOptions) *cobra.Command {
@@ -55,7 +55,7 @@ func runShimCommand(cmd *cobra.Command, root *rootOptions, workspaceRoot, alias,
 	if discovery == nil {
 		return fmt.Errorf("workspace root %q does not contain a workspace manifest", absRoot)
 	}
-	globalHome := strings.TrimSpace(os.Getenv("TINX_GLOBAL_HOME"))
+	globalHome := strings.TrimSpace(os.Getenv("KIOX_GLOBAL_HOME"))
 	if globalHome == "" {
 		globalHome = strings.TrimSpace(root.Home)
 	}
@@ -229,10 +229,10 @@ func installTargetEnvironment(existing map[string]string, resolved truntime.Reso
 	for key, value := range existing {
 		env[key] = value
 	}
-	env["TINX_TARGET_TOOL_NAME"] = resolved.Tool.Metadata.Name
-	env["TINX_TARGET_TOOL_BIN"] = resolved.BinaryPath
-	env["TINX_TARGET_TOOL_COMMAND"] = resolved.Tool.PrimaryProvide()
-	env["TINX_TARGET_TOOL_INSTALL_DIR"] = resolved.InstallDir
+	env["KIOX_TARGET_TOOL_NAME"] = resolved.Tool.Metadata.Name
+	env["KIOX_TARGET_TOOL_BIN"] = resolved.BinaryPath
+	env["KIOX_TARGET_TOOL_COMMAND"] = resolved.Tool.PrimaryProvide()
+	env["KIOX_TARGET_TOOL_INSTALL_DIR"] = resolved.InstallDir
 	return env
 }
 

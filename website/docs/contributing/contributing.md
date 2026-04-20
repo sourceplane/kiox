@@ -2,7 +2,7 @@
 title: Contributing
 ---
 
-Use this repository workflow when you change the tinx CLI, provider packaging logic, runtime behavior, or the docs site.
+Use this repository workflow when you change the kiox CLI, provider packaging logic, runtime behavior, or the docs site.
 
 ## Writing style
 
@@ -48,7 +48,7 @@ For the current fixture matrix, use the manual commands in `TEST_PROVIDERS.md`.
 
 ## Repository layout
 
-- `cmd/tinx`: tinx entrypoint
+- `cmd/kiox`: kiox entrypoint
 - `internal/cmd`: Cobra command definitions
 - `internal/core`: normalized package model and tool dependency planning
 - `internal/parser`: manifest normalization and multi-document parsing
@@ -56,7 +56,7 @@ For the current fixture matrix, use the manual commands in `TEST_PROVIDERS.md`.
 - `internal/oci`: OCI packaging and installation
 - `internal/runtime`: environment assembly and process execution helpers
 - `internal/runtimes`: built-in `oci`, `script`, and `local` runtime plugins
-- `internal/state`: tinx home state
+- `internal/state`: kiox home state
 - `website/docs/`: Docusaurus source docs
 - `testdata/`: provider fixtures, including legacy, multi-tool, inline, and managed-install examples
 
@@ -68,7 +68,7 @@ When the CLI or runtime behavior changes:
 2. update `website/sidebars.js` if navigation changes
 3. update `README.md` if the landing flow changes
 4. update `TEST_PROVIDERS.md` if fixture workflows change
-5. re-run `tinx --help` and subcommand help for CLI reference pages
+5. re-run `kiox --help` and subcommand help for CLI reference pages
 6. build the docs site before opening a PR
 
 If you add a new concept page, make sure it maps cleanly to one of:

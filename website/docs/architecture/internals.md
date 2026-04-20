@@ -2,14 +2,14 @@
 title: Internals
 ---
 
-This page maps the major tinx subsystems to the responsibilities they own. Use it when you need to understand how the workspace, provider, and runtime layers fit together.
+This page maps the major kiox subsystems to the responsibilities they own. Use it when you need to understand how the workspace, provider, and runtime layers fit together.
 
 ## System view
 
 ```text
 Provider (OCI)
       ↓
-tinx home (cache)
+kiox home (cache)
       ↓
 Workspace (definition + lock)
       ↓
@@ -27,7 +27,7 @@ Command
 | `internal/parser` | Manifest loading, legacy normalization, and multi-document parsing |
 | `internal/workspace` | Workspace manifests, lock files, sync, shell artifact generation |
 | `internal/oci` | OCI packing, remote install, local layout reads, runtime materialization |
-| `internal/state` | tinx home layout, aliases, active workspace, provider metadata |
+| `internal/state` | kiox home layout, aliases, active workspace, provider metadata |
 | `internal/runtime` | Environment assembly, PATH handling, process execution helpers |
 | `internal/runtimes` | Built-in runtime plugins for `oci`, `script`, and `local` tools |
 | `internal/build` | Go and GoReleaser build pipelines for providers |
@@ -37,14 +37,14 @@ Command
 When you run a workspace command such as:
 
 ```bash
-tinx --workspace demo -- node build
+kiox --workspace demo -- node build
 ```
 
-tinx follows this path:
+kiox follows this path:
 
 1. `internal/cmd` resolves the selected workspace by flag, discovery, or active workspace record.
 2. `internal/workspace` loads and normalizes the workspace manifest.
-3. `internal/workspace` syncs provider sources and updates `tinx.lock`.
+3. `internal/workspace` syncs provider sources and updates `kiox.lock`.
 4. `internal/workspace` builds `.workspace/env`, `.workspace/path`, and lazy shims under `.workspace/bin/`.
 5. The selected shim re-enters `internal/cmd` through the hidden `__shim` command.
 6. `internal/core` resolves the tool dependency plan.
@@ -57,10 +57,10 @@ The important architectural shift is that execution is now planned per tool, not
 When you package a provider:
 
 ```bash
-tinx release --manifest provider.yaml --main ./cmd/my-provider --push ghcr.io/acme/my-provider:v1.2.3
+kiox release --manifest provider.yaml --main ./cmd/my-provider --push ghcr.io/acme/my-provider:v1.2.3
 ```
 
-tinx follows this path:
+kiox follows this path:
 
 1. `internal/parser` normalizes the provider manifest into a package model.
 2. `internal/build` infers build targets from normalized bundle layer sources.
@@ -72,10 +72,10 @@ tinx follows this path:
 
 Two storage roots matter:
 
-- **tinx home**: default `~/.tinx`, or `TINX_HOME`, or `--tinx-home`
-- **workspace root**: the directory that contains `tinx.yaml`
+- **kiox home**: default `~/.kiox`, or `KIOX_HOME`, or `--kiox-home`
+- **workspace root**: the directory that contains `kiox.yaml`
 
-The workspace is for project-local runtime state. tinx home is for reusable provider metadata, OCI store content, aliases, and active workspace tracking.
+The workspace is for project-local runtime state. kiox home is for reusable provider metadata, OCI store content, aliases, and active workspace tracking.
 
 ## Design themes
 

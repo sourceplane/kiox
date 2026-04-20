@@ -11,11 +11,11 @@ The execution model is the relationship between the three core abstractions:
 ## Mental model
 
 ```text
-Provider package → tinx home → Workspace → Lazy shim → Runtime plugin → Command
+Provider package → kiox home → Workspace → Lazy shim → Runtime plugin → Command
 ```
 
 ```bash
-tinx -- node build
+kiox -- node build
 ```
 
 The command above is not special. It follows the same path every time.
@@ -44,9 +44,9 @@ providers:
 ```
 
 ```bash
-tinx init dev
-tinx use dev
-tinx -- node build
+kiox init dev
+kiox use dev
+kiox -- node build
 ```
 
 ## Design properties
@@ -60,7 +60,7 @@ tinx -- node build
 
 ## Failure points
 
-tinx fails early when:
+kiox fails early when:
 
 - no workspace is active and none can be discovered
 - the selected workspace root is missing

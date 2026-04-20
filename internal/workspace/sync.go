@@ -10,15 +10,15 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/sourceplane/tinx/internal/oci"
-	"github.com/sourceplane/tinx/internal/resolver"
-	"github.com/sourceplane/tinx/internal/state"
-	"github.com/sourceplane/tinx/internal/ui/progress"
+	"github.com/sourceplane/kiox/internal/oci"
+	"github.com/sourceplane/kiox/internal/resolver"
+	"github.com/sourceplane/kiox/internal/state"
+	"github.com/sourceplane/kiox/internal/ui/progress"
 	"golang.org/x/sync/errgroup"
 )
 
 const (
-	syncInstallConcurrencyEnv     = "TINX_SYNC_INSTALL_CONCURRENCY"
+	syncInstallConcurrencyEnv     = "KIOX_SYNC_INSTALL_CONCURRENCY"
 	defaultSyncInstallConcurrency = 4
 	defaultSyncRuntimeConcurrency = 2
 )

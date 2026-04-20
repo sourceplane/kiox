@@ -2,18 +2,18 @@
 title: Provider packaging
 ---
 
-tinx packages provider packages as OCI image layouts. You can keep the layout on disk, install from it locally, or push it to a registry.
+kiox packages provider packages as OCI image layouts. You can keep the layout on disk, install from it locally, or push it to a registry.
 
-The packaged artifact always contains both the authoring manifest and the normalized package metadata tinx uses at runtime.
+The packaged artifact always contains both the authoring manifest and the normalized package metadata kiox uses at runtime.
 
-Use `provider.yaml` as the authoring manifest for provider packages. Legacy `tinx.yaml` provider manifests are still supported.
+Use `provider.yaml` as the authoring manifest for provider packages. Legacy `kiox.yaml` provider manifests are still supported.
 
-## `tinx pack`
+## `kiox pack`
 
 Use `pack` when the bundle sources already exist on disk:
 
 ```bash
-tinx pack \
+kiox pack \
   --manifest provider.yaml \
   --artifact-root dist \
   --output oci \
@@ -28,12 +28,12 @@ tinx pack \
 
 and writes a directory-based OCI layout to `oci/`.
 
-## `tinx release`
+## `kiox release`
 
-Use `release` when tinx should build first and then pack:
+Use `release` when kiox should build first and then pack:
 
 ```bash
-tinx release \
+kiox release \
   --manifest provider.yaml \
   --main ./cmd/my-provider \
   --dist dist \
@@ -43,7 +43,7 @@ tinx release \
 Push to a registry in the same command:
 
 ```bash
-tinx release \
+kiox release \
   --manifest provider.yaml \
   --main ./cmd/my-provider \
   --push ghcr.io/acme/my-provider:v1.2.3
@@ -51,22 +51,22 @@ tinx release \
 
 ## Build strategies
 
-By default, `tinx release` uses `go build` for the normalized bundle targets declared in the provider manifest.
+By default, `kiox release` uses `go build` for the normalized bundle targets declared in the provider manifest.
 
-If `--main` is not set, tinx infers a main package from `cmd/<binary>` for each bundle-backed binary target.
+If `--main` is not set, kiox infers a main package from `cmd/<binary>` for each bundle-backed binary target.
 
 That means a provider package can publish several bundled tools without hard-coding one global entrypoint in the release step.
 
 Use GoReleaser when you already maintain a GoReleaser pipeline:
 
 ```bash
-tinx release \
+kiox release \
   --manifest provider.yaml \
   --delegate-goreleaser \
   --goreleaser-config .goreleaser.yaml
 ```
 
-If no GoReleaser config exists, tinx can generate one from the normalized bundle targets in the provider manifest.
+If no GoReleaser config exists, kiox can generate one from the normalized bundle targets in the provider manifest.
 
 ## What gets packed
 
@@ -78,9 +78,9 @@ Each packaged provider layout contains:
 - one OCI layer per bundle entry
 - tarred asset layers for asset bundles
 
-When a bundle entry is platform-specific, tinx writes a platform-qualified binary layer media type into the packaged OCI layout. That lets remote installs hydrate only the current host binaries instead of downloading every published platform blob.
+When a bundle entry is platform-specific, kiox writes a platform-qualified binary layer media type into the packaged OCI layout. That lets remote installs hydrate only the current host binaries instead of downloading every published platform blob.
 
-The provider config records the default tool runtime, entrypoint, and default tool name so tinx can bootstrap installs quickly.
+The provider config records the default tool runtime, entrypoint, and default tool name so kiox can bootstrap installs quickly.
 
 ## Setup-style providers
 
@@ -94,8 +94,8 @@ For example, in `setup-kubectl`:
 ## Install the result
 
 ```bash
-tinx install acme/my-provider --source ./oci
-tinx init demo -p ./oci as my-provider
+kiox install acme/my-provider --source ./oci
+kiox init demo -p ./oci as my-provider
 ```
 
 After install, the workspace shim path handles the final lazy tool materialization on first use.

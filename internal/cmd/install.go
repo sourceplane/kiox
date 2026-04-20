@@ -8,9 +8,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/sourceplane/tinx/internal/oci"
-	"github.com/sourceplane/tinx/internal/resolver"
-	"github.com/sourceplane/tinx/internal/state"
+	"github.com/sourceplane/kiox/internal/oci"
+	"github.com/sourceplane/kiox/internal/resolver"
+	"github.com/sourceplane/kiox/internal/state"
 )
 
 func newInstallCommand(root *rootOptions) *cobra.Command {
@@ -25,7 +25,7 @@ func newInstallCommand(root *rootOptions) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			beforeDash, afterDash := splitArgsAtDash(cmd, args)
 			if len(afterDash) > 0 {
-				return fmt.Errorf("install no longer executes commands; add the provider to a workspace and use 'tinx -- %s' instead", strings.Join(afterDash, " "))
+				return fmt.Errorf("install no longer executes commands; add the provider to a workspace and use 'kiox -- %s' instead", strings.Join(afterDash, " "))
 			}
 			alias, installTarget, err := parseInstallTarget(filterInstallArgs(beforeDash))
 			if err != nil {

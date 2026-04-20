@@ -8,12 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sourceplane/tinx/internal/state"
+	"github.com/sourceplane/kiox/internal/state"
 )
 
 func TestListWorkspacesShowsCompactWorkspaceScopes(t *testing.T) {
 	tempDir := t.TempDir()
-	globalHome := filepath.Join(tempDir, ".tinx-global")
+	globalHome := filepath.Join(tempDir, ".kiox-global")
 
 	liteCIProject := createLiteCIProviderProject(t, filepath.Join(tempDir, "lite-ci-provider"))
 	nodeProject := createNodeProviderProject(t, filepath.Join(tempDir, "node-provider"))
@@ -22,17 +22,17 @@ func TestListWorkspacesShowsCompactWorkspaceScopes(t *testing.T) {
 	workspaceRoot := filepath.Join(tempDir, "my-workspace")
 
 	runRootCommand(t, []string{
-		"--tinx-home", globalHome,
+		"--kiox-home", globalHome,
 		"init", workspaceRoot,
 		"-p", liteCILayout, "as", "lite-ci",
 		"-p", nodeLayout, "as", "node",
 	})
-	runRootCommand(t, []string{"--tinx-home", globalHome, "use", workspaceRoot})
+	runRootCommand(t, []string{"--kiox-home", globalHome, "use", workspaceRoot})
 
 	standaloneProvider := copyTestProvider(t, filepath.Join(tempDir, "standalone-provider"))
 	standaloneLayout := releaseStandaloneProviderLayout(t, globalHome, standaloneProvider)
 	runRootCommand(t, []string{
-		"--tinx-home", globalHome,
+		"--kiox-home", globalHome,
 		"install", "sourceplane/echo-provider",
 		"--source", standaloneLayout,
 	})
@@ -41,7 +41,7 @@ func TestListWorkspacesShowsCompactWorkspaceScopes(t *testing.T) {
 		t.Fatalf("remember missing workspace: %v", err)
 	}
 
-	listBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "ws", "list"})
+	listBuf := runRootCommand(t, []string{"--kiox-home", globalHome, "ws", "list"})
 	output := listBuf.String()
 	for _, expected := range []string{
 		"NAME",
@@ -76,7 +76,7 @@ func TestListWorkspacesShowsCompactWorkspaceScopes(t *testing.T) {
 		}
 	}
 
-	shortBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "ws", "list", "--short"})
+	shortBuf := runRootCommand(t, []string{"--kiox-home", globalHome, "ws", "list", "--short"})
 	shortOutput := shortBuf.String()
 	for _, expected := range []string{"* my-workspace", "  default"} {
 		if !strings.Contains(shortOutput, expected) {
@@ -87,19 +87,19 @@ func TestListWorkspacesShowsCompactWorkspaceScopes(t *testing.T) {
 		t.Fatalf("did not expect table header in short workspace output, got:\n%s", shortOutput)
 	}
 
-	readyBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "ws", "list", "--ready"})
+	readyBuf := runRootCommand(t, []string{"--kiox-home", globalHome, "ws", "list", "--ready"})
 	readyOutput := readyBuf.String()
 	if strings.Contains(readyOutput, "missing-workspace") {
 		t.Fatalf("did not expect missing workspace in ready output, got:\n%s", readyOutput)
 	}
 
-	missingBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "ws", "list", "--missing"})
+	missingBuf := runRootCommand(t, []string{"--kiox-home", globalHome, "ws", "list", "--missing"})
 	missingOutput := missingBuf.String()
 	if !strings.Contains(missingOutput, "missing-workspace") || !strings.Contains(missingOutput, "1 workspace (1 missing)") {
 		t.Fatalf("unexpected missing workspace output:\n%s", missingOutput)
 	}
 
-	activeBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "ws", "list", "--active"})
+	activeBuf := runRootCommand(t, []string{"--kiox-home", globalHome, "ws", "list", "--active"})
 	activeOutput := activeBuf.String()
 	if !strings.Contains(activeOutput, "my-workspace") || strings.Contains(activeOutput, "missing-workspace") {
 		t.Fatalf("unexpected active workspace output:\n%s", activeOutput)
@@ -108,14 +108,14 @@ func TestListWorkspacesShowsCompactWorkspaceScopes(t *testing.T) {
 
 func TestListProvidersSupportsWorkspaceAndDefaultScopes(t *testing.T) {
 	tempDir := t.TempDir()
-	globalHome := filepath.Join(tempDir, ".tinx-global")
+	globalHome := filepath.Join(tempDir, ".kiox-global")
 
 	liteCIProject := createLiteCIProviderProject(t, filepath.Join(tempDir, "lite-ci-provider"))
 	liteCILayout := releaseProviderLayout(t, globalHome, liteCIProject)
 	workspaceRoot := filepath.Join(tempDir, "team-workspace")
 
 	runRootCommand(t, []string{
-		"--tinx-home", globalHome,
+		"--kiox-home", globalHome,
 		"init", workspaceRoot,
 		"-p", liteCILayout, "as", "lite-ci",
 	})
@@ -123,12 +123,12 @@ func TestListProvidersSupportsWorkspaceAndDefaultScopes(t *testing.T) {
 	standaloneProvider := copyTestProvider(t, filepath.Join(tempDir, "standalone-provider"))
 	standaloneLayout := releaseStandaloneProviderLayout(t, globalHome, standaloneProvider)
 	runRootCommand(t, []string{
-		"--tinx-home", globalHome,
+		"--kiox-home", globalHome,
 		"install", "sourceplane/echo-provider",
 		"--source", standaloneLayout,
 	})
 
-	workspaceBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "p", "list", "team-workspace"})
+	workspaceBuf := runRootCommand(t, []string{"--kiox-home", globalHome, "p", "list", "team-workspace"})
 	workspaceOutput := workspaceBuf.String()
 	for _, expected := range []string{
 		"Scope: team-workspace",
@@ -150,7 +150,7 @@ func TestListProvidersSupportsWorkspaceAndDefaultScopes(t *testing.T) {
 		t.Fatalf("workspace provider output should not include default-home installs:\n%s", workspaceOutput)
 	}
 
-	defaultBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "p", "list", "default"})
+	defaultBuf := runRootCommand(t, []string{"--kiox-home", globalHome, "p", "list", "default"})
 	defaultOutput := defaultBuf.String()
 	for _, expected := range []string{
 		"Scope: default",
@@ -170,7 +170,7 @@ func TestListProvidersSupportsWorkspaceAndDefaultScopes(t *testing.T) {
 
 func TestListShowsToolInventoryForSetupProviderFlow(t *testing.T) {
 	tempDir := t.TempDir()
-	globalHome := filepath.Join(tempDir, ".tinx-global")
+	globalHome := filepath.Join(tempDir, ".kiox-global")
 	providerDir := filepath.Join(tempDir, "setup-kubectl-provider")
 	if err := copyTree(filepath.Join("..", "..", "testdata", "setup-kubectl"), providerDir); err != nil {
 		t.Fatalf("copy setup-kubectl provider: %v", err)
@@ -178,14 +178,14 @@ func TestListShowsToolInventoryForSetupProviderFlow(t *testing.T) {
 	layoutPath := releaseProviderLayout(t, globalHome, providerDir)
 	workspaceRoot := filepath.Join(tempDir, "kubectl-workspace")
 
-	runRootCommand(t, []string{"--tinx-home", globalHome, "init", workspaceRoot})
-	runRootCommand(t, []string{"--tinx-home", globalHome, "add", layoutPath, "as", "setup-kubectl"})
+	runRootCommand(t, []string{"--kiox-home", globalHome, "init", workspaceRoot})
+	runRootCommand(t, []string{"--kiox-home", globalHome, "add", layoutPath, "as", "setup-kubectl"})
 	server, version := newFakeKubectlReleaseServer(t)
 	defer server.Close()
 	t.Setenv("KUBECTL_RELEASE_BASE_URL", server.URL)
 	t.Setenv("KUBECTL_VERSION", "1.27")
 
-	beforeBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "ls", "kubectl-workspace"})
+	beforeBuf := runRootCommand(t, []string{"--kiox-home", globalHome, "ls", "kubectl-workspace"})
 	beforeOutput := beforeBuf.String()
 	for _, expected := range []string{
 		"Scope: kubectl-workspace",
@@ -201,7 +201,7 @@ func TestListShowsToolInventoryForSetupProviderFlow(t *testing.T) {
 		}
 	}
 
-	execBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "--workspace", workspaceRoot, "--", "kubectl", "version", "--client"})
+	execBuf := runRootCommand(t, []string{"--kiox-home", globalHome, "--workspace", workspaceRoot, "--", "kubectl", "version", "--client"})
 	execOutput := execBuf.String()
 	for _, expected := range []string{
 		"kubectl-version=" + version,
@@ -212,7 +212,7 @@ func TestListShowsToolInventoryForSetupProviderFlow(t *testing.T) {
 		}
 	}
 
-	afterBuf := runRootCommand(t, []string{"--tinx-home", globalHome, "ls", "kubectl-workspace"})
+	afterBuf := runRootCommand(t, []string{"--kiox-home", globalHome, "ls", "kubectl-workspace"})
 	afterOutput := afterBuf.String()
 	for _, expected := range []string{
 		"setup-kubectl",
@@ -258,9 +258,9 @@ func releaseStandaloneProviderLayout(t *testing.T, home, providerDir string) str
 	t.Helper()
 	layoutPath := filepath.Join(providerDir, "oci")
 	buf := runRootCommand(t, []string{
-		"--tinx-home", home,
+		"--kiox-home", home,
 		"release",
-		"--manifest", filepath.Join(providerDir, "tinx.yaml"),
+		"--manifest", filepath.Join(providerDir, "kiox.yaml"),
 		"--dist", filepath.Join(providerDir, "dist"),
 		"--output", layoutPath,
 	})

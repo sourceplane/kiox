@@ -12,24 +12,24 @@ import (
 )
 
 const (
-	APIVersionV1      = "tinx.io/v1"
+	APIVersionV1      = "kiox.io/v1"
 	KindWorkspace     = "Workspace"
 	KindWorkspaceLock = "WorkspaceLock"
-	ManifestName      = "tinx.yaml"
-	LockName          = "tinx.lock"
+	ManifestName      = "kiox.yaml"
+	LockName          = "kiox.lock"
 	StateDirName      = ".workspace"
 )
 
 var ManifestNames = []string{
-	"tinx.yaml",
-	"tinx.yml",
+	"kiox.yaml",
+	"kiox.yml",
 	"providers.tx.yaml",
 	"providers.tx.yml",
-	"providers.tinx.yaml",
-	"providers.tinx.yml",
+	"providers.kiox.yaml",
+	"providers.kiox.yml",
 }
 
-var ErrNotWorkspace = errors.New("tinx manifest is not a workspace")
+var ErrNotWorkspace = errors.New("kiox manifest is not a workspace")
 
 type Config struct {
 	APIVersion string              `yaml:"apiVersion,omitempty"`

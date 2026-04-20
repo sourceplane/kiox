@@ -9,7 +9,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/sourceplane/tinx/internal/core"
+	"github.com/sourceplane/kiox/internal/core"
 )
 
 func Load(path string) (core.Package, error) {
@@ -488,14 +488,14 @@ func normalizeLegacyProvider(pkg *core.Package, doc rawProviderDocument) error {
 	for _, platform := range doc.Spec.Platforms {
 		bundle.Spec.Layers = append(bundle.Spec.Layers, core.BundleLayer{
 			Platform:  core.PlatformSpec{OS: strings.TrimSpace(platform.OS), Arch: strings.TrimSpace(platform.Arch)},
-			MediaType: "application/vnd.tinx.tool.binary",
+			MediaType: "application/vnd.kiox.tool.binary",
 			Source:    filepath.ToSlash(strings.TrimSpace(platform.Binary)),
 		})
 	}
 	if assetsRoot := strings.TrimSpace(doc.Spec.Layers.Assets.Root); assetsRoot != "" {
 		bundle.Spec.Layers = append(bundle.Spec.Layers, core.BundleLayer{
 			Platform:  core.PlatformSpec{OS: "any", Arch: "any"},
-			MediaType: "application/vnd.tinx.asset.layer.v1+tar",
+			MediaType: "application/vnd.kiox.asset.layer.v1+tar",
 			Source:    filepath.ToSlash(assetsRoot),
 		})
 	}
@@ -888,9 +888,9 @@ func applyFromShortcut(source *rawSource, from string) {
 
 func defaultBundleMediaType(bundleType string) string {
 	if strings.EqualFold(strings.TrimSpace(bundleType), "asset") {
-		return "application/vnd.tinx.asset.layer.v1+tar"
+		return "application/vnd.kiox.asset.layer.v1+tar"
 	}
-	return "application/vnd.tinx.tool.binary"
+	return "application/vnd.kiox.tool.binary"
 }
 
 func copyStringMap(values map[string]string) map[string]string {

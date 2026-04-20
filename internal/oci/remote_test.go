@@ -11,8 +11,8 @@ import (
 
 func clearRegistryAuthEnv(t *testing.T) {
 	t.Helper()
-	t.Setenv("TINX_REGISTRY_USERNAME", "")
-	t.Setenv("TINX_REGISTRY_PASSWORD", "")
+	t.Setenv("KIOX_REGISTRY_USERNAME", "")
+	t.Setenv("KIOX_REGISTRY_PASSWORD", "")
 	t.Setenv("ORAS_USERNAME", "")
 	t.Setenv("ORAS_PASSWORD", "")
 	t.Setenv("GITHUB_ACTOR", "")
@@ -63,8 +63,8 @@ func TestDockerCredentialLookupEnabledHonorsOverride(t *testing.T) {
 
 func TestResolveRegistryCredentialPrefersEnvironment(t *testing.T) {
 	clearRegistryAuthEnv(t)
-	t.Setenv("TINX_REGISTRY_USERNAME", "env-user")
-	t.Setenv("TINX_REGISTRY_PASSWORD", "env-pass")
+	t.Setenv("KIOX_REGISTRY_USERNAME", "env-user")
+	t.Setenv("KIOX_REGISTRY_PASSWORD", "env-pass")
 	dockerCalls := 0
 	cred, err := resolveRegistryCredential(context.Background(), "ghcr.io", func(context.Context, string) (auth.Credential, error) {
 		dockerCalls++

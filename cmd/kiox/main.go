@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/sourceplane/tinx/internal/cmd"
+	"github.com/sourceplane/kiox/internal/cmd"
 )
 
 func main() {

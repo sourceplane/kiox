@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sourceplane/tinx/internal/state"
+	"github.com/sourceplane/kiox/internal/state"
 )
 
 const storeProviderMetadataName = "provider-metadata.json"

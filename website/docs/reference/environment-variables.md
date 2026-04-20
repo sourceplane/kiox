@@ -2,53 +2,53 @@
 title: Environment variables
 ---
 
-tinx reads a small set of environment variables from the host and writes additional variables into the workspace shell.
+kiox reads a small set of environment variables from the host and writes additional variables into the workspace shell.
 
 ## Host environment variables
 
 | Variable | Meaning |
 | --- | --- |
-| `TINX_HOME` | Override the default tinx home directory (`~/.tinx`) |
-| `TINX_REGISTRY_USERNAME` / `TINX_REGISTRY_PASSWORD` | Registry credentials for remote pulls and pushes |
+| `KIOX_HOME` | Override the default kiox home directory (`~/.kiox`) |
+| `KIOX_REGISTRY_USERNAME` / `KIOX_REGISTRY_PASSWORD` | Registry credentials for remote pulls and pushes |
 | `ORAS_USERNAME` / `ORAS_PASSWORD` | Alternative registry credentials for ORAS-backed operations |
 | `GITHUB_ACTOR` / `GITHUB_TOKEN` | Credentials used for `ghcr.io` when explicit registry credentials are not set |
-| `TINX_REGISTRY_DOCKER_AUTH` | Enable Docker credential-store fallback for registry operations. Default is `1` on Linux and Windows, and `0` on macOS to avoid interactive prompts during public pulls |
-| `TINX_REGISTRY_COPY_CONCURRENCY` | Maximum concurrent blob copy tasks for a single registry pull. Default is `2` |
-| `TINX_SYNC_INSTALL_CONCURRENCY` | Maximum number of independent provider installs tinx runs in parallel during workspace sync. Default is `4` |
-| `SHELL` | Preferred interactive shell for `tinx shell` |
+| `KIOX_REGISTRY_DOCKER_AUTH` | Enable Docker credential-store fallback for registry operations. Default is `1` on Linux and Windows, and `0` on macOS to avoid interactive prompts during public pulls |
+| `KIOX_REGISTRY_COPY_CONCURRENCY` | Maximum concurrent blob copy tasks for a single registry pull. Default is `2` |
+| `KIOX_SYNC_INSTALL_CONCURRENCY` | Maximum number of independent provider installs kiox runs in parallel during workspace sync. Default is `4` |
+| `SHELL` | Preferred interactive shell for `kiox shell` |
 
-CLI flags take precedence when an equivalent flag exists. For example, `--tinx-home` overrides `TINX_HOME`.
+CLI flags take precedence when an equivalent flag exists. For example, `--kiox-home` overrides `KIOX_HOME`.
 
 ## Workspace shell variables
 
-When tinx builds a workspace shell, it exports:
+When kiox builds a workspace shell, it exports:
 
 | Variable | Meaning |
 | --- | --- |
-| `TINX_HOME` | Workspace runtime home |
-| `TINX_GLOBAL_HOME` | Global tinx home used for shared provider state |
-| `TINX_WORKSPACE_ROOT` | Workspace root directory |
-| `TINX_WORKSPACE_HOME` | Workspace `.workspace/` directory |
-| `TINX_WORKSPACE_ENV_FILE` | Path to the generated env file |
-| `TINX_WORKSPACE_PATH_FILE` | Path to the generated path file |
-| `TINX_WORKSPACE_PROVIDERS` | Path to the workspace provider metadata directory |
-| `TINX_PROVIDER_<ALIAS>_REF` | Provider reference for the alias |
-| `TINX_PROVIDER_<ALIAS>_HOME` | Provider store root |
-| `TINX_PROVIDER_<ALIAS>_BINARY` | Resolved default tool path; it may still be lazy |
+| `KIOX_HOME` | Workspace runtime home |
+| `KIOX_GLOBAL_HOME` | Global kiox home used for shared provider state |
+| `KIOX_WORKSPACE_ROOT` | Workspace root directory |
+| `KIOX_WORKSPACE_HOME` | Workspace `.workspace/` directory |
+| `KIOX_WORKSPACE_ENV_FILE` | Path to the generated env file |
+| `KIOX_WORKSPACE_PATH_FILE` | Path to the generated path file |
+| `KIOX_WORKSPACE_PROVIDERS` | Path to the workspace provider metadata directory |
+| `KIOX_PROVIDER_<ALIAS>_REF` | Provider reference for the alias |
+| `KIOX_PROVIDER_<ALIAS>_HOME` | Provider store root |
+| `KIOX_PROVIDER_<ALIAS>_BINARY` | Resolved default tool path; it may still be lazy |
 
-These variables are available to any command run through `tinx shell`, `tinx exec`, or `tinx -- ...`.
+These variables are available to any command run through `kiox shell`, `kiox exec`, or `kiox -- ...`.
 
 ## Script runtime install variables
 
-When tinx installs a `script` tool, it injects:
+When kiox installs a `script` tool, it injects:
 
 | Variable | Meaning |
 | --- | --- |
-| `TINX_TOOL_INSTALL_DIR` | Tool-specific install root in the provider store |
-| `TINX_TOOL_BIN` | Exact executable path the install must create |
-| `TINX_TOOL_NAME` | Tool resource name |
-| `TINX_TOOL_COMMAND` | Primary provided command name |
-| `TINX_PROVIDER_HOME` | Provider store root |
+| `KIOX_TOOL_INSTALL_DIR` | Tool-specific install root in the provider store |
+| `KIOX_TOOL_BIN` | Exact executable path the install must create |
+| `KIOX_TOOL_NAME` | Tool resource name |
+| `KIOX_TOOL_COMMAND` | Primary provided command name |
+| `KIOX_PROVIDER_HOME` | Provider store root |
 
 ## Managed-install target variables
 
@@ -56,14 +56,14 @@ When one tool installs another through `install.tool`, the installer tool also r
 
 | Variable | Meaning |
 | --- | --- |
-| `TINX_TARGET_TOOL_NAME` | Tool being installed |
-| `TINX_TARGET_TOOL_BIN` | Exact binary path the installer must create |
-| `TINX_TARGET_TOOL_COMMAND` | Primary command exposed by the target tool |
-| `TINX_TARGET_TOOL_INSTALL_DIR` | Install root for the target tool |
+| `KIOX_TARGET_TOOL_NAME` | Tool being installed |
+| `KIOX_TARGET_TOOL_BIN` | Exact binary path the installer must create |
+| `KIOX_TARGET_TOOL_COMMAND` | Primary command exposed by the target tool |
+| `KIOX_TARGET_TOOL_INSTALL_DIR` | Install root for the target tool |
 
 ## Provider template variables
 
-tinx expands these values inside environment variables, tool `env` and `path` entries, and legacy provider `env` and `path` entries:
+kiox expands these values inside environment variables, tool `env` and `path` entries, and legacy provider `env` and `path` entries:
 
 | Template | Meaning |
 | --- | --- |

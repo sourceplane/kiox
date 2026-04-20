@@ -21,11 +21,11 @@ const sidebars = {
       type: 'category',
       label: 'CLI',
       items: [
-        'cli/tinx',
-        'cli/tinx-install',
-        'cli/tinx-run',
-        'cli/tinx-workspace',
-        'cli/tinx-provider',
+        'cli/kiox',
+        'cli/kiox-install',
+        'cli/kiox-run',
+        'cli/kiox-workspace',
+        'cli/kiox-provider',
       ],
     },
     {

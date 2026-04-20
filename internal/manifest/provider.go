@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	APIVersionV1  = "tinx.io/v1"
+	APIVersionV1  = "kiox.io/v1"
 	KindProvider  = "Provider"
 	RuntimeBinary = "binary"
 )
@@ -145,8 +145,8 @@ func (p Provider) Validate() error {
 		if trimmedKey == "" {
 			return errors.New("spec.env keys must not be empty")
 		}
-		if strings.HasPrefix(strings.ToUpper(trimmedKey), "TINX_") {
-			return fmt.Errorf("spec.env key %q must not use reserved TINX_ prefix", trimmedKey)
+		if strings.HasPrefix(strings.ToUpper(trimmedKey), "KIOX_") {
+			return fmt.Errorf("spec.env key %q must not use reserved KIOX_ prefix", trimmedKey)
 		}
 	}
 	for _, entry := range p.Spec.Path {

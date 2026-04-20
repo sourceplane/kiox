@@ -12,12 +12,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/sourceplane/tinx/internal/core"
-	"github.com/sourceplane/tinx/internal/oci"
-	truntime "github.com/sourceplane/tinx/internal/runtime"
-	"github.com/sourceplane/tinx/internal/runtimes"
-	"github.com/sourceplane/tinx/internal/state"
-	"github.com/sourceplane/tinx/internal/workspace"
+	"github.com/sourceplane/kiox/internal/core"
+	"github.com/sourceplane/kiox/internal/oci"
+	truntime "github.com/sourceplane/kiox/internal/runtime"
+	"github.com/sourceplane/kiox/internal/runtimes"
+	"github.com/sourceplane/kiox/internal/state"
+	"github.com/sourceplane/kiox/internal/workspace"
 )
 
 const defaultInventoryScopeName = "default"
@@ -550,26 +550,26 @@ func providerInvokeHint(meta state.ProviderMetadata, aliases []string, workspace
 		target = aliases[0]
 	}
 	if workspaceScope {
-		return "tinx -- " + target + " ..."
+		return "kiox -- " + target + " ..."
 	}
 	addTarget := providerAddTarget(meta)
 	if len(aliases) == 0 {
-		return "tinx add " + addTarget
+		return "kiox add " + addTarget
 	}
-	return "tinx add " + addTarget + " as " + aliases[0]
+	return "kiox add " + addTarget + " as " + aliases[0]
 }
 
 func missingProviderInvokeHint(ref string, aliases []string, workspaceScope bool) string {
 	if workspaceScope {
 		if len(aliases) > 0 {
-			return "tinx -- " + aliases[0] + " ..."
+			return "kiox -- " + aliases[0] + " ..."
 		}
-		return "tinx -- " + ref + " ..."
+		return "kiox -- " + ref + " ..."
 	}
 	if len(aliases) > 0 {
-		return "tinx add " + ref + " as " + aliases[0]
+		return "kiox add " + ref + " as " + aliases[0]
 	}
-	return "tinx add " + ref
+	return "kiox add " + ref
 }
 
 func providerAddTarget(meta state.ProviderMetadata) string {

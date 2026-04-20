@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/sourceplane/tinx/pkg/version"
+	"github.com/sourceplane/kiox/pkg/version"
 )
 
 type rootOptions struct {
@@ -27,7 +27,7 @@ func NewRootCommand() *cobra.Command {
 
 func newRootCommand(opts *rootOptions) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:           "tinx",
+		Use:           "kiox",
 		Short:         "OCI-native provider runtime and packager",
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -39,9 +39,9 @@ func newRootCommand(opts *rootOptions) *cobra.Command {
 			return cmd.Help()
 		},
 	}
-	cmd.PersistentFlags().StringVar(&opts.Home, "tinx-home", opts.Home, "override the tinx home directory")
+	cmd.PersistentFlags().StringVar(&opts.Home, "kiox-home", opts.Home, "override the kiox home directory")
 	cmd.PersistentFlags().StringVarP(&opts.Workspace, "workspace", "w", opts.Workspace, "select the workspace for workspace-shell commands")
-	cmd.SetVersionTemplate("tinx {{.Version}}\n")
+	cmd.SetVersionTemplate("kiox {{.Version}}\n")
 	cmd.AddCommand(newInitCommand(opts))
 	cmd.AddCommand(newStatusCommand(opts))
 	cmd.AddCommand(newWorkspaceCommand(opts))
@@ -98,11 +98,11 @@ func extractRootArgs(args []string) (rootOptions, []string, error) {
 			break
 		}
 		switch {
-		case strings.HasPrefix(arg, "--tinx-home="):
-			opts.Home = strings.TrimPrefix(arg, "--tinx-home=")
-		case arg == "--tinx-home":
+		case strings.HasPrefix(arg, "--kiox-home="):
+			opts.Home = strings.TrimPrefix(arg, "--kiox-home=")
+		case arg == "--kiox-home":
 			if i+1 >= len(args) {
-				return rootOptions{}, nil, fmt.Errorf("missing value for --tinx-home")
+				return rootOptions{}, nil, fmt.Errorf("missing value for --kiox-home")
 			}
 			opts.Home = args[i+1]
 			i++

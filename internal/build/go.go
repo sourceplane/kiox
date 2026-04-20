@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/sourceplane/tinx/internal/core"
+	"github.com/sourceplane/kiox/internal/core"
 )
 
 type GoBuildOptions struct {
@@ -103,5 +103,5 @@ func ldflags(version string) string {
 	if version == "" {
 		version = "dev"
 	}
-	return "-s -w -X github.com/sourceplane/tinx/pkg/version.Version=" + version
+	return "-s -w -X github.com/sourceplane/kiox/pkg/version.Version=" + version
 }
