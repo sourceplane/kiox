@@ -413,13 +413,13 @@ func readLayout(layoutPath, tag string) (core.Package, ProviderManifestView, Pro
 	view = ProviderManifestView{ConfigDescriptor: imageManifest.Config, ManifestDescriptor: manifestDescriptor, BundleLayers: make([]BundleLayerDescriptor, 0, len(imageManifest.Layers))}
 	for _, layer := range imageManifest.Layers {
 		switch layer.MediaType {
-		case MediaTypeManifest:
+		case MediaTypeManifest, legacyMediaTypeManifest:
 			view.ManifestDescriptor = layer
 			manifestBytes, err = readBlob(layoutPath, layer)
 			if err != nil {
 				return pkg, view, config, nil, nil, err
 			}
-		case MediaTypeMetadata:
+		case MediaTypeMetadata, legacyMediaTypeMetadata:
 			view.MetadataDescriptor = layer
 			metadataBytes, err = readBlob(layoutPath, layer)
 			if err != nil {
@@ -649,17 +649,14 @@ func copyDirectory(srcDir, dstDir string) error {
 
 func descriptorFromLayer(layer ocispec.Descriptor) BundleLayerDescriptor {
 	platform := core.PlatformSpec{}
-	if raw := strings.TrimSpace(layer.Annotations["io.kiox.platform"]); raw != "" {
-		parts := strings.SplitN(raw, "/", 2)
-		if len(parts) == 2 {
-			platform.OS = strings.TrimSpace(parts[0])
-			platform.Arch = strings.TrimSpace(parts[1])
-		}
+	if platformOS, platformArch, ok := parsePlatformAnnotation(providerPlatformAnnotation(layer.Annotations)); ok {
+		platform.OS = platformOS
+		platform.Arch = platformArch
 	}
 	return BundleLayerDescriptor{
-		Bundle:     strings.TrimSpace(layer.Annotations["io.kiox.bundle"]),
+		Bundle:     providerBundleAnnotation(layer.Annotations),
 		Platform:   platform,
-		Source:     strings.TrimSpace(firstNonEmpty(layer.Annotations["io.kiox.source"], layer.Annotations["org.opencontainers.image.title"])),
+		Source:     providerSourceAnnotation(layer.Annotations),
 		MediaType:  layer.MediaType,
 		Descriptor: layer,
 	}
@@ -881,7 +878,7 @@ func platformMatches(platform core.PlatformSpec, goos, goarch string) bool {
 
 func isArchiveMediaType(mediaType string) bool {
 	trimmed := strings.TrimSpace(mediaType)
-	return strings.HasSuffix(trimmed, "+tar") || trimmed == MediaTypeAssets
+	return strings.HasSuffix(trimmed, "+tar") || trimmed == MediaTypeAssets || trimmed == legacyMediaTypeAssets
 }
 
 func firstNonEmpty(values ...string) string {

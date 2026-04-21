@@ -325,33 +325,17 @@ func shouldCopyDescriptor(descriptor ocispec.Descriptor, selection remoteCopySel
 }
 
 func isMetadataDescriptor(descriptor ocispec.Descriptor) bool {
-	switch descriptor.MediaType {
-	case ocispec.MediaTypeImageManifest, MediaTypeConfig, MediaTypeManifest, MediaTypeMetadata:
+	if descriptor.MediaType == ocispec.MediaTypeImageManifest {
 		return true
-	default:
-		return false
 	}
+	return isProviderConfigMediaType(descriptor.MediaType) || isProviderManifestMediaType(descriptor.MediaType) || isProviderMetadataMediaType(descriptor.MediaType)
 }
 
 func descriptorPlatform(descriptor ocispec.Descriptor) (string, string, bool) {
-	if raw := strings.TrimSpace(descriptor.Annotations["io.kiox.platform"]); raw != "" {
-		parts := strings.SplitN(raw, "/", 2)
-		if len(parts) == 2 && strings.TrimSpace(parts[0]) != "" && strings.TrimSpace(parts[1]) != "" {
-			return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]), true
-		}
+	if platformOS, platformArch, ok := parsePlatformAnnotation(providerPlatformAnnotation(descriptor.Annotations)); ok {
+		return platformOS, platformArch, true
 	}
-	const prefix = "application/vnd.kiox.provider.binary."
-	const suffix = ".v1"
-	mediaType := strings.TrimSpace(descriptor.MediaType)
-	if !strings.HasPrefix(mediaType, prefix) || !strings.HasSuffix(mediaType, suffix) {
-		return "", "", false
-	}
-	trimmed := strings.TrimSuffix(strings.TrimPrefix(mediaType, prefix), suffix)
-	parts := strings.SplitN(trimmed, ".", 2)
-	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
-		return "", "", false
-	}
-	return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]), true
+	return parseProviderBinaryMediaType(descriptor.MediaType)
 }
 
 func cachedRemoteInstall(activationHome, storeHome, alias, ref string, requireRuntimeBlobs, plainHTTP bool) (state.ProviderMetadata, bool, error) {
